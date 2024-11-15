@@ -28,6 +28,7 @@ import {
   FeatureState,
   ServerCapabilities,
   ErrorCodes,
+  MessageStrategy,
 } from "vscode-languageclient/node";
 
 import {
@@ -63,7 +64,7 @@ function enabledFeatureFlags() {
 // Get the executables to start the server based on the user's configuration
 function getLspExecutables(
   workspaceFolder: vscode.WorkspaceFolder,
-  env: NodeJS.ProcessEnv,
+  ruby: Ruby,
 ): ServerOptions {
   let run: Executable;
   let debug: Executable;
@@ -77,8 +78,8 @@ function getLspExecutables(
   const executableOptions: ExecutableOptions = {
     cwd: workspaceFolder.uri.fsPath,
     env: bypassTypechecker
-      ? { ...env, RUBY_LSP_BYPASS_TYPECHECKER: "true" }
-      : env,
+      ? { ...ruby.env, RUBY_LSP_BYPASS_TYPECHECKER: "true" }
+      : ruby.env,
     shell: true,
   };
 
@@ -132,7 +133,93 @@ function getLspExecutables(
     };
   }
 
+  const convertExecutable = (executable: Executable) => {
+    const builtExecutable = ruby.buildExecutable([
+      executable.command,
+      ...(executable.args || []),
+    ]);
+
+    return { ...executable, ...builtExecutable };
+  };
+
+  run = convertExecutable(run);
+  debug = convertExecutable(debug);
+
   return { run, debug };
+}
+
+class MessageHandler implements MessageStrategy {
+  private readonly workspaceOutputChannel: WorkspaceChannel;
+
+  constructor(workspaceOutputChannel: WorkspaceChannel) {
+    this.workspaceOutputChannel = workspaceOutputChannel;
+  }
+
+  handleMessage(message: Message, next: (message: Message) => void): void {
+    // Log and continue
+    this.workspaceOutputChannel.debug(
+      `Received message: ${JSON.stringify(message)}`,
+    );
+
+    next(message);
+  }
+}
+
+class PathConverter {
+  pathMapping: [string, string][];
+  workingDirectory: string;
+  outputChannel: WorkspaceChannel;
+
+  constructor({
+    workingDirectory,
+    outputChannel,
+  }: {
+    workingDirectory: string;
+    outputChannel: WorkspaceChannel;
+  }) {
+    const mapping =
+      vscode.workspace
+        .getConfiguration("rubyLsp.rubyVersionManager")
+        .get("containerPathMapping") || {};
+
+    const pathMapping: Record<string, string> = {};
+
+    Object.entries(mapping as Record<string, string>).forEach(
+      ([local, remote]) => {
+        pathMapping[path.resolve(workingDirectory, local)] = remote;
+      },
+    );
+
+    outputChannel.info(`Path mapping: ${JSON.stringify(pathMapping)}`);
+
+    this.pathMapping = Object.entries(pathMapping);
+    this.workingDirectory = workingDirectory;
+    this.outputChannel = outputChannel;
+  }
+
+  toRemotePath(path: string) {
+    for (const [local, remote] of this.pathMapping) {
+      if (path.startsWith(local)) {
+        return path.replace(local, remote);
+      }
+    }
+
+    return path;
+  }
+
+  toLocalPath(path: string) {
+    for (const [local, remote] of this.pathMapping) {
+      if (path.startsWith(remote)) {
+        return path.replace(remote, local);
+      }
+    }
+
+    return path;
+  }
+
+  toRemoteUri(path: string) {
+    return vscode.Uri.file(this.toRemotePath(path));
+  }
 }
 
 function collectClientOptions(
@@ -142,6 +229,7 @@ function collectClientOptions(
   ruby: Ruby,
   isMainWorkspace: boolean,
   telemetry: vscode.TelemetryLogger,
+  pathConverter: PathConverter,
 ): LanguageClientOptions {
   const pullOn: "change" | "save" | "both" =
     configuration.get("pullDiagnosticsOn")!;
@@ -166,6 +254,23 @@ function collectClientOptions(
     },
   );
 
+  const pushAlternativePaths = (path: string) => {
+    [pathConverter.toLocalPath(path), pathConverter.toRemotePath(path)].forEach(
+      (convertedPath) => {
+        if (convertedPath !== path) {
+          SUPPORTED_LANGUAGE_IDS.forEach((language) => {
+            documentSelector.push({
+              language,
+              pattern: `${convertedPath}/**/*`,
+            });
+          });
+        }
+      },
+    );
+  };
+
+  pushAlternativePaths(fsPath);
+
   // Only the first language server we spawn should handle unsaved files, otherwise requests will be duplicated across
   // all workspaces
   if (isMainWorkspace) {
@@ -183,6 +288,8 @@ function collectClientOptions(
       pattern: `${gemPath}/**/*`,
     });
 
+    pushAlternativePaths(gemPath);
+
     // Because of how default gems are installed, the gemPath location is actually not exactly where the files are
     // located. With the regex, we are correcting the default gem path from this (where the files are not located)
     // /opt/rubies/3.3.1/lib/ruby/gems/3.3.0
@@ -193,10 +300,14 @@ function collectClientOptions(
     // Notice that we still need to add the regular path to the selector because some version managers will install gems
     // under the non-corrected path
     if (/lib\/ruby\/gems\/(?=\d)/.test(gemPath)) {
+      const fixedPath = gemPath.replace(/lib\/ruby\/gems\/(?=\d)/, "lib/ruby/");
+
       documentSelector.push({
         language: "ruby",
-        pattern: `${gemPath.replace(/lib\/ruby\/gems\/(?=\d)/, "lib/ruby/")}/**/*`,
+        pattern: `${fixedPath}/**/*`,
       });
+
+      pushAlternativePaths(fixedPath);
     }
   });
 
@@ -208,9 +319,45 @@ function collectClientOptions(
     });
   }
 
+  // Map using pathMapping
+  const code2Protocol = (uri: vscode.Uri) => {
+    const remotePath = pathConverter.toRemotePath(uri.fsPath);
+    const remoteUri = uri.with({ path: remotePath }).toString();
+
+    outputChannel.info(
+      `Converted code2Protocol ${JSON.stringify(uri)} to ${remoteUri}`,
+    );
+
+    return remoteUri;
+  };
+
+  const protocol2Code = (uri: string) => {
+    const remoteUri = vscode.Uri.parse(uri);
+    const localUri = remoteUri.with({
+      path: pathConverter.toLocalPath(remoteUri.fsPath),
+    });
+
+    outputChannel.info(
+      `Converted protocol2Code ${uri} to ${JSON.stringify(localUri)}`,
+    );
+
+    return localUri;
+  };
+
+  const messageStrategy = new MessageHandler(outputChannel);
+
+  outputChannel.info(
+    `Document Selector Paths: ${JSON.stringify(documentSelector)}`,
+  );
+
   return {
     documentSelector,
     workspaceFolder,
+    uriConverters: {
+      code2Protocol,
+      protocol2Code,
+    },
+    connectionOptions: { messageStrategy },
     diagnosticCollectionName: LSP_NAME,
     outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
@@ -316,6 +463,7 @@ export default class Client extends LanguageClient implements ClientInterface {
   private readonly baseFolder;
   private readonly workspaceOutputChannel: WorkspaceChannel;
   private readonly virtualDocuments = new Map<string, string>();
+  private readonly pathConverter: PathConverter;
 
   #context: vscode.ExtensionContext;
   #formatter: string;
@@ -331,9 +479,15 @@ export default class Client extends LanguageClient implements ClientInterface {
     isMainWorkspace = false,
     debugMode?: boolean,
   ) {
+    const workingDirectory = workspaceFolder.uri.fsPath;
+    const pathConverter = new PathConverter({
+      workingDirectory,
+      outputChannel,
+    });
+
     super(
       LSP_NAME,
-      getLspExecutables(workspaceFolder, ruby.env),
+      getLspExecutables(workspaceFolder, ruby),
       collectClientOptions(
         vscode.workspace.getConfiguration("rubyLsp"),
         workspaceFolder,
@@ -341,6 +495,7 @@ export default class Client extends LanguageClient implements ClientInterface {
         ruby,
         isMainWorkspace,
         telemetry,
+        pathConverter,
       ),
       debugMode,
     );
@@ -348,13 +503,14 @@ export default class Client extends LanguageClient implements ClientInterface {
     this.registerFeature(new ExperimentalCapabilities());
     this.workspaceOutputChannel = outputChannel;
     this.virtualDocuments = virtualDocuments;
+    this.pathConverter = pathConverter;
 
     // Middleware are part of client options, but because they must reference `this`, we cannot make it a part of the
     // `super` call (TypeScript does not allow accessing `this` before invoking `super`)
     this.registerMiddleware();
 
-    this.workingDirectory = workspaceFolder.uri.fsPath;
-    this.baseFolder = path.basename(this.workingDirectory);
+    this.workingDirectory = workingDirectory;
+    this.baseFolder = path.basename(workingDirectory);
     this.telemetry = telemetry;
     this.createTestItems = createTestItems;
     this.#context = context;
@@ -424,7 +580,9 @@ export default class Client extends LanguageClient implements ClientInterface {
     range?: Range,
   ): Promise<{ ast: string } | null> {
     return this.sendRequest("rubyLsp/textDocument/showSyntaxTree", {
-      textDocument: { uri: uri.toString() },
+      textDocument: {
+        uri: this.pathConverter.toRemoteUri(uri.fsPath).toString(),
+      },
       range,
     });
   }
@@ -691,9 +849,46 @@ export default class Client extends LanguageClient implements ClientInterface {
           token?: vscode.CancellationToken,
         ) => Promise<T>,
       ) => {
-        return this.benchmarkMiddleware(type, param, () =>
-          next(type, param, token),
+        this.workspaceOutputChannel.trace(
+          `Sending request: ${JSON.stringify(type)} with params: ${JSON.stringify(param)}`,
         );
+
+        const result = (await this.benchmarkMiddleware(type, param, () =>
+          next(type, param, token),
+        )) as any;
+
+        this.workspaceOutputChannel.trace(
+          `Received response for ${JSON.stringify(type)}: ${JSON.stringify(result)}`,
+        );
+
+        const request = typeof type === "string" ? type : type.method;
+
+        switch (request) {
+          case "rubyLsp/workspace/dependencies":
+            return Promise.resolve(
+              result.map((dep: { path: string }) => {
+                return {
+                  ...dep,
+                  path: this.pathConverter.toLocalPath(dep.path),
+                };
+              }) as T,
+            );
+          case "textDocument/hover":
+            this.workspaceOutputChannel.info(
+              `Hover response: ${JSON.stringify(result)}`,
+            );
+            if (result?.contents?.kind === "markdown") {
+              result.contents.value = result.contents.value.replace(
+                /\(file:\/\/(.+?)#/gim,
+                (_match: string, path: string) => {
+                  return `(file://${this.pathConverter.toLocalPath(path)}#`;
+                },
+              );
+            }
+            return Promise.resolve(result);
+          default:
+            return Promise.resolve(result);
+        }
       },
       sendNotification: async <TR>(
         type: string | MessageSignature,

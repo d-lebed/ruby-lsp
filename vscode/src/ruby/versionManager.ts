@@ -1,8 +1,10 @@
 /* eslint-disable no-process-env */
 import path from "path";
 import os from "os";
+import { ExecOptions } from "child_process";
 
 import * as vscode from "vscode";
+import { Executable } from "vscode-languageclient/node";
 
 import { WorkspaceChannel } from "../workspaceChannel";
 import { asyncExec } from "../common";
@@ -56,8 +58,19 @@ export abstract class VersionManager {
   // language server
   abstract activate(): Promise<ActivationResult>;
 
+  runActivatedScript(command: string, options: ExecOptions = {}) {
+    return this.runScript(command, options);
+  }
+
+  buildExecutable(command: string[]): Executable {
+    return {
+      command: command[0],
+      args: command.slice(1),
+    };
+  }
+
   protected async runEnvActivationScript(activatedRuby: string) {
-    const result = await this.runScript(
+    const result = await this.runActivatedScript(
       `${activatedRuby} -W0 -rjson -e '${this.activationScript}'`,
     );
 
@@ -82,7 +95,7 @@ export abstract class VersionManager {
 
   // Runs the given command in the directory for the Bundle, using the user's preferred shell and inheriting the current
   // process environment
-  protected runScript(command: string) {
+  protected runScript(command: string, options: ExecOptions = {}) {
     let shell: string | undefined;
 
     // If the user has configured a default shell, we use that one since they are probably sourcing their version
@@ -103,6 +116,7 @@ export abstract class VersionManager {
       cwd: this.bundleUri.fsPath,
       shell,
       env: process.env,
+      ...options,
     });
   }
 

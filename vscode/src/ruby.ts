@@ -1,6 +1,7 @@
 /* eslint-disable no-process-env */
 import path from "path";
 import os from "os";
+import { ExecOptions } from "child_process";
 
 import * as vscode from "vscode";
 
@@ -14,6 +15,7 @@ import { RubyInstaller } from "./ruby/rubyInstaller";
 import { Rbenv } from "./ruby/rbenv";
 import { Rvm } from "./ruby/rvm";
 import { None } from "./ruby/none";
+import { Compose } from "./ruby/compose";
 import { Custom } from "./ruby/custom";
 import { Asdf } from "./ruby/asdf";
 
@@ -26,6 +28,7 @@ export enum ManagerIdentifier {
   Shadowenv = "shadowenv",
   Mise = "mise",
   RubyInstaller = "rubyInstaller",
+  Compose = "compose",
   None = "none",
   Custom = "custom",
 }
@@ -47,6 +50,7 @@ export class Ruby implements RubyInterface {
 
   private readonly shell = process.env.SHELL?.replace(/(\s+)/g, "\\$1");
   private _env: NodeJS.ProcessEnv = {};
+  private _manager?: VersionManager;
   private _error = false;
   private readonly context: vscode.ExtensionContext;
   private readonly customBundleGemfile?: string;
@@ -161,6 +165,14 @@ export class Ruby implements RubyInterface {
     }
   }
 
+  runActivatedScript(command: string, options: ExecOptions = {}) {
+    return this._manager!.runActivatedScript(command, options);
+  }
+
+  buildExecutable(command: string[]) {
+    return this._manager!.buildExecutable(command);
+  }
+
   async manuallySelectRuby() {
     const manualSelection = await vscode.window.showInformationMessage(
       "Configure global fallback or workspace specific Ruby?",
@@ -217,6 +229,7 @@ export class Ruby implements RubyInterface {
     // We need to set the process environment too to make other extensions such as Sorbet find the right Ruby paths
     process.env = env;
     this._env = env;
+    this._manager = manager;
     this.rubyVersion = version;
     this.yjitEnabled = (yjit && major > 3) || (major === 3 && minor >= 2);
     this.gemPath.push(...gemPath);
@@ -292,6 +305,11 @@ export class Ruby implements RubyInterface {
       case ManagerIdentifier.RubyInstaller:
         await this.runActivation(
           new RubyInstaller(this.workspaceFolder, this.outputChannel),
+        );
+        break;
+      case ManagerIdentifier.Compose:
+        await this.runActivation(
+          new Compose(this.workspaceFolder, this.outputChannel),
         );
         break;
       case ManagerIdentifier.Custom:

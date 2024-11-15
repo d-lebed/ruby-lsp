@@ -333,6 +333,7 @@
                 "rvm",
                 "shadowenv",
                 "mise",
+                "compose",
                 "custom"
               ],
               "default": "auto"
@@ -348,6 +349,19 @@
             "chrubyRubies": {
               "description": "An array of extra directories to search for Ruby installations when using chruby. Equivalent to the RUBIES environment variable",
               "type": "array"
+            },
+            "composeService": {
+              "description": "The name of the service in the compose file to use to start the Ruby LSP server",
+              "type": "string"
+            },
+            "composeCustomCommand": {
+              "description": "A shell command to start the ruby LSP server using compose. This overrides the composeService setting",
+              "type": "string"
+            },
+            "containerPathMapping": {
+              "description": "A mapping of local directories to directories in the compose service",
+              "type": "object",
+              "default": {}
             }
           },
           "default": {

@@ -1,5 +1,6 @@
 /* eslint-disable no-process-env */
 import os from "os";
+import { ExecOptions } from "child_process";
 
 import * as vscode from "vscode";
 
@@ -58,7 +59,7 @@ export class RubyInstaller extends Chruby {
   // Override the `runScript` method to ensure that we do not pass any `shell` to `asyncExec`. The activation script is
   // only compatible with `cmd.exe`, and not Powershell, due to escaping of quotes. We need to ensure to always run the
   // script on `cmd.exe`.
-  protected runScript(command: string) {
+  protected runScript(command: string, options: ExecOptions = {}) {
     this.outputChannel.info(
       `Running command: \`${command}\` in ${this.bundleUri.fsPath}`,
     );
@@ -69,6 +70,7 @@ export class RubyInstaller extends Chruby {
     return asyncExec(command, {
       cwd: this.bundleUri.fsPath,
       env: process.env,
+      ...options,
     });
   }
 }
