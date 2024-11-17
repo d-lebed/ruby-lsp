@@ -28,7 +28,6 @@ import {
   FeatureState,
   ServerCapabilities,
   ErrorCodes,
-  MessageStrategy,
 } from "vscode-languageclient/node";
 
 import {
@@ -148,23 +147,6 @@ function getLspExecutables(
   return { run, debug };
 }
 
-class MessageHandler implements MessageStrategy {
-  private readonly workspaceOutputChannel: WorkspaceChannel;
-
-  constructor(workspaceOutputChannel: WorkspaceChannel) {
-    this.workspaceOutputChannel = workspaceOutputChannel;
-  }
-
-  handleMessage(message: Message, next: (message: Message) => void): void {
-    // Log and continue
-    this.workspaceOutputChannel.debug(
-      `Received message: ${JSON.stringify(message)}`,
-    );
-
-    next(message);
-  }
-}
-
 class PathConverter {
   pathMapping: [string, string][];
   workingDirectory: string;
@@ -200,6 +182,12 @@ class PathConverter {
   toRemotePath(path: string) {
     for (const [local, remote] of this.pathMapping) {
       if (path.startsWith(local)) {
+        const remotePath = path.replace(local, remote);
+
+        this.outputChannel.debug(
+          `Converted toRemotePath ${path} to ${remotePath}`,
+        );
+
         return path.replace(local, remote);
       }
     }
@@ -210,7 +198,13 @@ class PathConverter {
   toLocalPath(path: string) {
     for (const [local, remote] of this.pathMapping) {
       if (path.startsWith(remote)) {
-        return path.replace(remote, local);
+        const localPath = path.replace(remote, local);
+
+        this.outputChannel.debug(
+          `Converted toLocalPath ${path} to ${localPath}`,
+        );
+
+        return localPath;
       }
     }
 
@@ -319,36 +313,22 @@ function collectClientOptions(
     });
   }
 
+  outputChannel.info(
+    `Document Selector Paths: ${JSON.stringify(documentSelector)}`,
+  );
+
   // Map using pathMapping
   const code2Protocol = (uri: vscode.Uri) => {
     const remotePath = pathConverter.toRemotePath(uri.fsPath);
-    const remoteUri = uri.with({ path: remotePath }).toString();
-
-    outputChannel.info(
-      `Converted code2Protocol ${JSON.stringify(uri)} to ${remoteUri}`,
-    );
-
-    return remoteUri;
+    return uri.with({ path: remotePath }).toString();
   };
 
   const protocol2Code = (uri: string) => {
     const remoteUri = vscode.Uri.parse(uri);
-    const localUri = remoteUri.with({
+    return remoteUri.with({
       path: pathConverter.toLocalPath(remoteUri.fsPath),
     });
-
-    outputChannel.info(
-      `Converted protocol2Code ${uri} to ${JSON.stringify(localUri)}`,
-    );
-
-    return localUri;
   };
-
-  const messageStrategy = new MessageHandler(outputChannel);
-
-  outputChannel.info(
-    `Document Selector Paths: ${JSON.stringify(documentSelector)}`,
-  );
 
   return {
     documentSelector,
@@ -357,7 +337,6 @@ function collectClientOptions(
       code2Protocol,
       protocol2Code,
     },
-    connectionOptions: { messageStrategy },
     diagnosticCollectionName: LSP_NAME,
     outputChannel,
     revealOutputChannelOn: RevealOutputChannelOn.Never,
@@ -874,21 +853,17 @@ export default class Client extends LanguageClient implements ClientInterface {
               }) as T,
             );
           case "textDocument/hover":
-            this.workspaceOutputChannel.info(
-              `Hover response: ${JSON.stringify(result)}`,
-            );
             if (result?.contents?.kind === "markdown") {
               result.contents.value = result.contents.value.replace(
                 /\(file:\/\/(.+?)#/gim,
-                (_match: string, path: string) => {
-                  return `(file://${this.pathConverter.toLocalPath(path)}#`;
-                },
+                (_match: string, path: string) =>
+                  `(file://${this.pathConverter.toLocalPath(path)}#`,
               );
             }
-            return Promise.resolve(result);
-          default:
-            return Promise.resolve(result);
+            break;
         }
+
+        return Promise.resolve(result);
       },
       sendNotification: async <TR>(
         type: string | MessageSignature,
