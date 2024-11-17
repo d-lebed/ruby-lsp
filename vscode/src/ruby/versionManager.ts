@@ -63,10 +63,8 @@ export abstract class VersionManager {
   }
 
   buildExecutable(command: string[]): Executable {
-    return {
-      command: command[0],
-      args: command.slice(1),
-    };
+    const [executable, ...args] = command;
+    return { command: executable, args };
   }
 
   protected async runEnvActivationScript(activatedRuby: string) {

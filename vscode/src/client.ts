@@ -305,6 +305,31 @@ function collectClientOptions(
     }
   });
 
+  // Add other mapped paths to the document selector
+  pathConverter.pathMapping.forEach(([local, remote]) => {
+    if (
+      (documentSelector as { pattern: string }[]).some(
+        (selector) =>
+          selector.pattern?.startsWith(local) ||
+          selector.pattern?.startsWith(remote),
+      )
+    ) {
+      return;
+    }
+
+    SUPPORTED_LANGUAGE_IDS.forEach((language) => {
+      documentSelector.push({
+        language,
+        pattern: `${local}/**/*`,
+      });
+
+      documentSelector.push({
+        language,
+        pattern: `${remote}/**/*`,
+      });
+    });
+  });
+
   // This is a temporary solution as an escape hatch for users who cannot upgrade the `ruby-lsp` gem to a version that
   // supports ERB
   if (!configuration.get<boolean>("erbSupport")) {
@@ -844,14 +869,13 @@ export default class Client extends LanguageClient implements ClientInterface {
 
         switch (request) {
           case "rubyLsp/workspace/dependencies":
-            return Promise.resolve(
-              result.map((dep: { path: string }) => {
-                return {
-                  ...dep,
-                  path: this.pathConverter.toLocalPath(dep.path),
-                };
-              }) as T,
-            );
+            return result.map((dep: { path: string }) => {
+              return {
+                ...dep,
+                path: this.pathConverter.toLocalPath(dep.path),
+              };
+            });
+
           case "textDocument/hover":
             if (
               result?.contents?.kind === "markdown" &&
@@ -866,7 +890,7 @@ export default class Client extends LanguageClient implements ClientInterface {
             break;
         }
 
-        return Promise.resolve(result);
+        return result;
       },
       sendNotification: async <TR>(
         type: string | MessageSignature,
