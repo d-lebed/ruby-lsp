@@ -853,7 +853,10 @@ export default class Client extends LanguageClient implements ClientInterface {
               }) as T,
             );
           case "textDocument/hover":
-            if (result?.contents?.kind === "markdown") {
+            if (
+              result?.contents?.kind === "markdown" &&
+              result.contents.value
+            ) {
               result.contents.value = result.contents.value.replace(
                 /\(file:\/\/(.+?)#/gim,
                 (_match: string, path: string) =>
