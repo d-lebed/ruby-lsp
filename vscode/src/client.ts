@@ -132,17 +132,8 @@ function getLspExecutables(
     };
   }
 
-  const convertExecutable = (executable: Executable) => {
-    const builtExecutable = ruby.buildExecutable([
-      executable.command,
-      ...(executable.args || []),
-    ]);
-
-    return { ...executable, ...builtExecutable };
-  };
-
-  run = convertExecutable(run);
-  debug = convertExecutable(debug);
+  run = ruby.activateExecutable(run);
+  debug = ruby.activateExecutable(debug);
 
   return { run, debug };
 }

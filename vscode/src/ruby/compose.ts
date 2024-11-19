@@ -13,7 +13,9 @@ import { VersionManager, ActivationResult } from "./versionManager";
 // GEM_HOME and GEM_PATH as needed to find the correct Ruby runtime.
 export class Compose extends VersionManager {
   async activate(): Promise<ActivationResult> {
-    const parsedResult = await this.runEnvActivationScript("ruby");
+    const parsedResult = await this.runEnvActivationScript(
+      `${this.composeRunCommand()} ${this.composeServiceName()} ruby`,
+    );
 
     return {
       env: { ...process.env },
@@ -24,43 +26,55 @@ export class Compose extends VersionManager {
   }
 
   runActivatedScript(command: string, options: ExecOptions = {}) {
-    const escapedCommand = this.escapeForShell(command);
-
     return this.runScript(
-      `${this.composeRunCommand()} ${escapedCommand}`,
+      `${this.composeRunCommand()} ${this.composeServiceName()} ${command}`,
       options,
     );
   }
 
-  buildExecutable(command: string[]): Executable {
-    const escapedCommand = this.escapeForShell(command.join(" "));
-    const composePatrs = this.composeRunCommand().split(" ");
+  activateExecutable(executable: Executable) {
+    const composeCommand = this.parseCommand(
+      `${this.composeRunCommand()} ${this.composeServiceName()}`,
+    );
 
     return {
-      command: composePatrs[0],
-      args: [...composePatrs.slice(1), escapedCommand],
+      command: composeCommand.command,
+      args: [
+        ...composeCommand.args,
+        executable.command,
+        ...(executable.args || []),
+      ],
+      options: {
+        ...executable.options,
+        env: { ...(executable.options?.env || {}), ...composeCommand.env },
+      },
     };
   }
 
-  protected composeRunCommand() {
-    const configuration = vscode.workspace.getConfiguration(
-      "rubyLsp.rubyVersionManager",
-    );
-    const composeRunCommand: string | undefined = configuration.get(
-      "composeCustomCommand",
-    );
+  protected composeRunCommand(): string {
+    return `${this.composeCommand()} run --rm -i --no-deps`;
+  }
 
-    if (composeRunCommand === undefined) {
+  protected composeServiceName(): string {
+    const service: string | undefined = vscode.workspace
+      .getConfiguration("rubyLsp.rubyVersionManager")
+      .get("composeService");
+
+    if (service === undefined) {
       throw new Error(
-        "The customRubyCommand configuration must be set when 'custom' is selected as the version manager. \
+        "The composeService configuration must be set when 'compose' is selected as the version manager. \
         See the [README](https://shopify.github.io/ruby-lsp/version-managers.html) for instructions.",
       );
     }
 
-    return composeRunCommand;
+    return service;
   }
 
-  protected escapeForShell(command: string): string {
-    return `'${command.replace(/'/g, "'\\''")}'`;
+  protected composeCommand(): string {
+    const composeCustomCommand: string | undefined = vscode.workspace
+      .getConfiguration("rubyLsp.rubyVersionManager")
+      .get("composeCustomCommand");
+
+    return composeCustomCommand || "docker compose --progress quiet";
   }
 }

@@ -1,7 +1,7 @@
 /* eslint-disable no-process-env */
 import path from "path";
 import os from "os";
-import { ExecOptions } from "child_process";
+import { ExecOptions, spawn } from "child_process";
 
 import * as vscode from "vscode";
 import { Executable } from "vscode-languageclient/node";
@@ -62,14 +62,14 @@ export abstract class VersionManager {
     return this.runScript(command, options);
   }
 
-  buildExecutable(command: string[]): Executable {
-    const [executable, ...args] = command;
-    return { command: executable, args };
+  activateExecutable(executable: Executable) {
+    return executable;
   }
 
   protected async runEnvActivationScript(activatedRuby: string) {
-    const result = await this.runActivatedScript(
-      `${activatedRuby} -W0 -rjson -e '${this.activationScript}'`,
+    const result = await this.runRubyScript(
+      `${activatedRuby} -W0 -rjson`,
+      this.activationScript,
     );
 
     const activationContent = new RegExp(
@@ -94,28 +94,95 @@ export abstract class VersionManager {
   // Runs the given command in the directory for the Bundle, using the user's preferred shell and inheriting the current
   // process environment
   protected runScript(command: string, options: ExecOptions = {}) {
-    let shell: string | undefined;
+    const execOptions = this.execOptions(options);
+
+    this.outputChannel.info(
+      `Running command: \`${command}\` in ${execOptions.cwd} using shell: ${execOptions.shell}`,
+    );
+    this.outputChannel.debug(
+      `Environment used for command: ${JSON.stringify(execOptions.env)}`,
+    );
+
+    return asyncExec(command, execOptions);
+  }
+
+  protected runRubyScript(
+    rubyCommand: string,
+    script: string,
+  ): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, _reject) => {
+      this.outputChannel.info(
+        `Ruby \`${rubyCommand}\` running Ruby script: \`${script}\``,
+      );
+
+      const { command, args, env } = this.parseCommand(rubyCommand);
+      const ruby = spawn(command, args, this.execOptions({ env }));
+
+      ruby.stdout.once("data", (data) => {
+        resolve({ stdout: data.toString(), stderr: "" });
+      });
+      ruby.stderr.once("data", (data) => {
+        resolve({ stdout: "", stderr: data.toString() });
+      });
+      ruby.on("error", (error) => {
+        resolve({ stdout: "", stderr: error.message });
+      });
+
+      ruby.stdin.write(script);
+      ruby.stdin.end();
+    });
+  }
+
+  protected execOptions(options: ExecOptions = {}): ExecOptions {
+    const execOptions = {
+      cwd: this.bundleUri.fsPath,
+      ...options,
+      env: { ...process.env, ...options.env },
+    };
 
     // If the user has configured a default shell, we use that one since they are probably sourcing their version
     // manager scripts in that shell's configuration files. On Windows, we never set the shell no matter what to ensure
     // that activation runs on `cmd.exe` and not PowerShell, which avoids complex quoting and escaping issues.
-    if (vscode.env.shell.length > 0 && os.platform() !== "win32") {
-      shell = vscode.env.shell;
+    if (
+      !options.shell &&
+      vscode.env.shell.length > 0 &&
+      os.platform() !== "win32"
+    ) {
+      execOptions.shell = vscode.env.shell;
     }
 
-    this.outputChannel.info(
-      `Running command: \`${command}\` in ${this.bundleUri.fsPath} using shell: ${shell}`,
-    );
-    this.outputChannel.debug(
-      `Environment used for command: ${JSON.stringify(process.env)}`,
-    );
+    return execOptions;
+  }
 
-    return asyncExec(command, {
-      cwd: this.bundleUri.fsPath,
-      shell,
-      env: process.env,
-      ...options,
-    });
+  // Parses a command string into its command, arguments, and environment variables
+  protected parseCommand(commandString: string): {
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+  } {
+    // Regular expression to split arguments while respecting quotes
+    const regex = /(?:[^\s"']+|"[^"]*"|'[^']*')+/g;
+
+    const parts =
+      commandString.match(regex)?.map((arg) => {
+        // Remove surrounding quotes, if any
+        return arg.replace(/^['"]|['"]$/g, "");
+      }) ?? [];
+
+    // Extract environment variables
+    const env: Record<string, string> = {};
+    while (parts[0] && parts[0].includes("=")) {
+      const [key, value] = parts.shift()?.split("=") ?? [];
+      if (key) {
+        env[key] = value || "";
+      }
+    }
+
+    // The first part is the command, the rest are arguments
+    const command = parts.shift() || "";
+    const args = parts;
+
+    return { command, args, env };
   }
 
   // Tries to find `execName` within the given directories. Prefers the executables found in the given directories over

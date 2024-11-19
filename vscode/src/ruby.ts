@@ -4,6 +4,7 @@ import os from "os";
 import { ExecOptions } from "child_process";
 
 import * as vscode from "vscode";
+import { Executable } from "vscode-languageclient/node";
 
 import { asyncExec, RubyInterface } from "./common";
 import { WorkspaceChannel } from "./workspaceChannel";
@@ -169,8 +170,8 @@ export class Ruby implements RubyInterface {
     return this._manager!.runActivatedScript(command, options);
   }
 
-  buildExecutable(command: string[]) {
-    return this._manager!.buildExecutable(command);
+  activateExecutable(executable: Executable) {
+    return this._manager!.activateExecutable(executable);
   }
 
   async manuallySelectRuby() {
