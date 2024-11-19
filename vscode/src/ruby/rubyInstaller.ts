@@ -4,8 +4,6 @@ import { ExecOptions } from "child_process";
 
 import * as vscode from "vscode";
 
-import { asyncExec } from "../common";
-
 import { Chruby } from "./chruby";
 
 interface RubyVersion {

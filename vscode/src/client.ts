@@ -773,10 +773,14 @@ export default class Client extends LanguageClient implements ClientInterface {
         token,
         _next,
       ) => {
+        const remoteUri = document.uri.with({
+          path: this.pathConverter.toRemotePath(document.uri.fsPath),
+        });
+
         const response: vscode.TextEdit[] | null = await this.sendRequest(
           "textDocument/onTypeFormatting",
           {
-            textDocument: { uri: document.uri.toString() },
+            textDocument: { uri: remoteUri.toString() },
             position,
             ch,
             options,
