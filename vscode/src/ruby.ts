@@ -6,11 +6,11 @@ import { ExecOptions } from "child_process";
 import * as vscode from "vscode";
 import { Executable } from "vscode-languageclient/node";
 
-import { asyncExec, RubyInterface } from "./common";
+import { asyncExec, PathConverterInterface, RubyInterface } from "./common";
 import { WorkspaceChannel } from "./workspaceChannel";
 import { Shadowenv } from "./ruby/shadowenv";
 import { Chruby } from "./ruby/chruby";
-import { VersionManager } from "./ruby/versionManager";
+import { PathConverter, VersionManager } from "./ruby/versionManager";
 import { Mise } from "./ruby/mise";
 import { RubyInstaller } from "./ruby/rubyInstaller";
 import { Rbenv } from "./ruby/rbenv";
@@ -52,6 +52,7 @@ export class Ruby implements RubyInterface {
   private readonly shell = process.env.SHELL?.replace(/(\s+)/g, "\\$1");
   private _env: NodeJS.ProcessEnv = {};
   private _manager?: VersionManager;
+  private _pathConverter: PathConverterInterface = new PathConverter();
   private _error = false;
   private readonly context: vscode.ExtensionContext;
   private readonly customBundleGemfile?: string;
@@ -94,6 +95,14 @@ export class Ruby implements RubyInterface {
     } else {
       this.#versionManager = versionManager;
     }
+  }
+
+  get pathConverter() {
+    return this._pathConverter;
+  }
+
+  set pathConverter(pathConverter: PathConverterInterface) {
+    this._pathConverter = pathConverter;
   }
 
   get env() {
@@ -226,6 +235,8 @@ export class Ruby implements RubyInterface {
     const [major, minor, _patch] = version.split(".").map(Number);
 
     this.sanitizeEnvironment(env);
+
+    this.pathConverter = await manager.buildPathConverter(this.workspaceFolder);
 
     // We need to set the process environment too to make other extensions such as Sorbet find the right Ruby paths
     process.env = env;

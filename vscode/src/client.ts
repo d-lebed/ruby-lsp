@@ -37,6 +37,7 @@ import {
   SUPPORTED_LANGUAGE_IDS,
   FEATURE_FLAGS,
   featureEnabled,
+  PathConverterInterface,
 } from "./common";
 import { Ruby } from "./ruby";
 import { WorkspaceChannel } from "./workspaceChannel";
@@ -138,75 +139,6 @@ function getLspExecutables(
   return { run, debug };
 }
 
-class PathConverter {
-  pathMapping: [string, string][];
-  workingDirectory: string;
-  outputChannel: WorkspaceChannel;
-
-  constructor({
-    workingDirectory,
-    outputChannel,
-  }: {
-    workingDirectory: string;
-    outputChannel: WorkspaceChannel;
-  }) {
-    const mapping =
-      vscode.workspace
-        .getConfiguration("rubyLsp.rubyVersionManager")
-        .get("containerPathMapping") || {};
-
-    const pathMapping: Record<string, string> = {};
-
-    Object.entries(mapping as Record<string, string>).forEach(
-      ([local, remote]) => {
-        pathMapping[path.resolve(workingDirectory, local)] = remote;
-      },
-    );
-
-    outputChannel.info(`Path mapping: ${JSON.stringify(pathMapping)}`);
-
-    this.pathMapping = Object.entries(pathMapping);
-    this.workingDirectory = workingDirectory;
-    this.outputChannel = outputChannel;
-  }
-
-  toRemotePath(path: string) {
-    for (const [local, remote] of this.pathMapping) {
-      if (path.startsWith(local)) {
-        const remotePath = path.replace(local, remote);
-
-        this.outputChannel.debug(
-          `Converted toRemotePath ${path} to ${remotePath}`,
-        );
-
-        return path.replace(local, remote);
-      }
-    }
-
-    return path;
-  }
-
-  toLocalPath(path: string) {
-    for (const [local, remote] of this.pathMapping) {
-      if (path.startsWith(remote)) {
-        const localPath = path.replace(remote, local);
-
-        this.outputChannel.debug(
-          `Converted toLocalPath ${path} to ${localPath}`,
-        );
-
-        return localPath;
-      }
-    }
-
-    return path;
-  }
-
-  toRemoteUri(path: string) {
-    return vscode.Uri.file(this.toRemotePath(path));
-  }
-}
-
 function collectClientOptions(
   configuration: vscode.WorkspaceConfiguration,
   workspaceFolder: vscode.WorkspaceFolder,
@@ -214,7 +146,6 @@ function collectClientOptions(
   ruby: Ruby,
   isMainWorkspace: boolean,
   telemetry: vscode.TelemetryLogger,
-  pathConverter: PathConverter,
 ): LanguageClientOptions {
   const pullOn: "change" | "save" | "both" =
     configuration.get("pullDiagnosticsOn")!;
@@ -238,6 +169,8 @@ function collectClientOptions(
       return { language, pattern: `${fsPath}/**/*` };
     },
   );
+
+  const pathConverter = ruby.pathConverter;
 
   const pushAlternativePaths = (path: string) => {
     [pathConverter.toLocalPath(path), pathConverter.toRemotePath(path)].forEach(
@@ -458,7 +391,7 @@ export default class Client extends LanguageClient implements ClientInterface {
   private readonly baseFolder;
   private readonly workspaceOutputChannel: WorkspaceChannel;
   private readonly virtualDocuments = new Map<string, string>();
-  private readonly pathConverter: PathConverter;
+  private readonly pathConverter: PathConverterInterface;
 
   #context: vscode.ExtensionContext;
   #formatter: string;
@@ -475,10 +408,6 @@ export default class Client extends LanguageClient implements ClientInterface {
     debugMode?: boolean,
   ) {
     const workingDirectory = workspaceFolder.uri.fsPath;
-    const pathConverter = new PathConverter({
-      workingDirectory,
-      outputChannel,
-    });
 
     super(
       LSP_NAME,
@@ -490,7 +419,6 @@ export default class Client extends LanguageClient implements ClientInterface {
         ruby,
         isMainWorkspace,
         telemetry,
-        pathConverter,
       ),
       debugMode,
     );
@@ -498,7 +426,7 @@ export default class Client extends LanguageClient implements ClientInterface {
     this.registerFeature(new ExperimentalCapabilities());
     this.workspaceOutputChannel = outputChannel;
     this.virtualDocuments = virtualDocuments;
-    this.pathConverter = pathConverter;
+    this.pathConverter = ruby.pathConverter;
 
     // Middleware are part of client options, but because they must reference `this`, we cannot make it a part of the
     // `super` call (TypeScript does not allow accessing `this` before invoking `super`)

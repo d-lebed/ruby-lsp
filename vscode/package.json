@@ -357,11 +357,6 @@
             "composeCustomCommand": {
               "description": "A shell command to start the ruby LSP server using compose. This overrides the composeService setting",
               "type": "string"
-            },
-            "containerPathMapping": {
-              "description": "A mapping of local directories to directories in the compose service",
-              "type": "object",
-              "default": {}
             }
           },
           "default": {

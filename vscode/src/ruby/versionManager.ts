@@ -7,7 +7,7 @@ import * as vscode from "vscode";
 import { Executable } from "vscode-languageclient/node";
 
 import { WorkspaceChannel } from "../workspaceChannel";
-import { asyncExec } from "../common";
+import { asyncExec, PathConverterInterface } from "../common";
 
 export interface ActivationResult {
   env: NodeJS.ProcessEnv;
@@ -17,6 +17,22 @@ export interface ActivationResult {
 }
 
 export const ACTIVATION_SEPARATOR = "RUBY_LSP_ACTIVATION_SEPARATOR";
+
+export class PathConverter implements PathConverterInterface {
+  readonly pathMapping: [string, string][] = [];
+
+  toRemotePath(path: string) {
+    return path;
+  }
+
+  toLocalPath(path: string) {
+    return path;
+  }
+
+  toRemoteUri(path: string) {
+    return vscode.Uri.file(path);
+  }
+}
 
 export abstract class VersionManager {
   public activationScript = [
@@ -64,6 +80,10 @@ export abstract class VersionManager {
 
   activateExecutable(executable: Executable) {
     return executable;
+  }
+
+  async buildPathConverter(_workspaceFolder: vscode.WorkspaceFolder) {
+    return new PathConverter();
   }
 
   protected async runEnvActivationScript(activatedRuby: string) {

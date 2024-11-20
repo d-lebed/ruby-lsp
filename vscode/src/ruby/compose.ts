@@ -1,8 +1,11 @@
 /* eslint-disable no-process-env */
 import { ExecOptions } from "child_process";
+import path from "path";
 
 import * as vscode from "vscode";
 import { Executable } from "vscode-languageclient/node";
+
+import { ContainerPathConverter, fetchPathMapping } from "../docker";
 
 import { VersionManager, ActivationResult } from "./versionManager";
 
@@ -51,6 +54,42 @@ export class Compose extends VersionManager {
     };
   }
 
+  async buildPathConverter(workspaceFolder: vscode.WorkspaceFolder) {
+    const configJson = await this.runScript(
+      `${this.composeCommand()} config --format=json`,
+    );
+    const config = JSON.parse(configJson.stdout);
+    const pathMapping = fetchPathMapping(config, this.composeServiceName());
+
+    const filteredMapping = await Object.entries(pathMapping).reduce(
+      async (accPromise: Promise<Record<string, string>>, [local, remote]) => {
+        const acc = await accPromise;
+        const absolutePath = path.resolve(workspaceFolder.uri.fsPath, local);
+
+        try {
+          const localStat = await vscode.workspace.fs.stat(
+            vscode.Uri.file(absolutePath),
+          );
+
+          if (localStat.type === vscode.FileType.Directory) {
+            this.outputChannel.info(`Path ${absolutePath} mapped to ${remote}`);
+
+            acc[absolutePath] = remote;
+          }
+        } catch (error) {
+          this.outputChannel.debug(
+            `Skipping path ${local} because it does not exist`,
+          );
+        }
+
+        return acc;
+      },
+      Promise.resolve({}),
+    );
+
+    return new ContainerPathConverter(filteredMapping, this.outputChannel);
+  }
+
   protected composeRunCommand(): string {
     return `${this.composeCommand()} run --rm -i --no-deps`;
   }
@@ -75,6 +114,9 @@ export class Compose extends VersionManager {
       .getConfiguration("rubyLsp.rubyVersionManager")
       .get("composeCustomCommand");
 
-    return composeCustomCommand || "docker compose --progress quiet";
+    return (
+      composeCustomCommand ||
+      "docker --log-level=error compose --progress=quiet"
+    );
   }
 }
