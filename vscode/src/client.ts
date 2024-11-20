@@ -790,27 +790,45 @@ export default class Client extends LanguageClient implements ClientInterface {
 
         const request = typeof type === "string" ? type : type.method;
 
-        switch (request) {
-          case "rubyLsp/workspace/dependencies":
-            return result.map((dep: { path: string }) => {
-              return {
-                ...dep,
-                path: this.pathConverter.toLocalPath(dep.path),
-              };
-            });
+        try {
+          switch (request) {
+            case "rubyLsp/workspace/dependencies":
+              return result.map((dep: { path: string }) => {
+                return {
+                  ...dep,
+                  path: this.pathConverter.toLocalPath(dep.path),
+                };
+              });
 
-          case "textDocument/hover":
-            if (
-              result?.contents?.kind === "markdown" &&
-              result.contents.value
-            ) {
-              result.contents.value = result.contents.value.replace(
-                /\(file:\/\/(.+?)#/gim,
-                (_match: string, path: string) =>
-                  `(file://${this.pathConverter.toLocalPath(path)}#`,
-              );
-            }
-            break;
+            case "textDocument/codeAction":
+              return result.map((action: { uri: string }) => {
+                const file = vscode.Uri.parse(action.uri);
+
+                return {
+                  ...action,
+                  uri: file
+                    .with({ path: this.pathConverter.toLocalPath(file.fsPath) })
+                    .toString(),
+                };
+              });
+
+            case "textDocument/hover":
+              if (
+                result?.contents?.kind === "markdown" &&
+                result.contents.value
+              ) {
+                result.contents.value = result.contents.value.replace(
+                  /\(file:\/\/(.+?)#/gim,
+                  (_match: string, path: string) =>
+                    `(file://${this.pathConverter.toLocalPath(path)}#`,
+                );
+              }
+              break;
+          }
+        } catch (error) {
+          this.workspaceOutputChannel.error(
+            `Error while processing response for ${request}: ${error}`,
+          );
         }
 
         return result;
