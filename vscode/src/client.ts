@@ -407,8 +407,6 @@ export default class Client extends LanguageClient implements ClientInterface {
     isMainWorkspace = false,
     debugMode?: boolean,
   ) {
-    const workingDirectory = workspaceFolder.uri.fsPath;
-
     super(
       LSP_NAME,
       getLspExecutables(workspaceFolder, ruby),
@@ -432,8 +430,8 @@ export default class Client extends LanguageClient implements ClientInterface {
     // `super` call (TypeScript does not allow accessing `this` before invoking `super`)
     this.registerMiddleware();
 
-    this.workingDirectory = workingDirectory;
-    this.baseFolder = path.basename(workingDirectory);
+    this.workingDirectory = workspaceFolder.uri.fsPath;
+    this.baseFolder = path.basename(this.workingDirectory);
     this.telemetry = telemetry;
     this.createTestItems = createTestItems;
     this.#context = context;
