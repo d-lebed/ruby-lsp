@@ -41,6 +41,9 @@ module RubyLsp
           :on_module_node_enter,
           :on_module_node_leave,
           :on_instance_variable_write_node_enter,
+          :on_instance_variable_operator_write_node_enter,
+          :on_instance_variable_or_write_node_enter,
+          :on_instance_variable_and_write_node_enter,
           :on_class_variable_write_node_enter,
           :on_singleton_class_node_enter,
           :on_singleton_class_node_leave,
@@ -249,8 +252,8 @@ module RubyLsp
         @response_builder.pop
       end
 
-      sig { params(node: Prism::InstanceVariableWriteNode).void }
-      def on_instance_variable_write_node_enter(node)
+      sig { params(node: Prism::ClassVariableWriteNode).void }
+      def on_class_variable_write_node_enter(node)
         create_document_symbol(
           name: node.name.to_s,
           kind: Constant::SymbolKind::VARIABLE,
@@ -259,11 +262,41 @@ module RubyLsp
         )
       end
 
-      sig { params(node: Prism::ClassVariableWriteNode).void }
-      def on_class_variable_write_node_enter(node)
+      sig { params(node: Prism::InstanceVariableWriteNode).void }
+      def on_instance_variable_write_node_enter(node)
         create_document_symbol(
           name: node.name.to_s,
-          kind: Constant::SymbolKind::VARIABLE,
+          kind: Constant::SymbolKind::FIELD,
+          range_location: node.name_loc,
+          selection_range_location: node.name_loc,
+        )
+      end
+
+      sig { params(node: Prism::InstanceVariableOperatorWriteNode).void }
+      def on_instance_variable_operator_write_node_enter(node)
+        create_document_symbol(
+          name: node.name.to_s,
+          kind: Constant::SymbolKind::FIELD,
+          range_location: node.name_loc,
+          selection_range_location: node.name_loc,
+        )
+      end
+
+      sig { params(node: Prism::InstanceVariableOrWriteNode).void }
+      def on_instance_variable_or_write_node_enter(node)
+        create_document_symbol(
+          name: node.name.to_s,
+          kind: Constant::SymbolKind::FIELD,
+          range_location: node.name_loc,
+          selection_range_location: node.name_loc,
+        )
+      end
+
+      sig { params(node: Prism::InstanceVariableAndWriteNode).void }
+      def on_instance_variable_and_write_node_enter(node)
+        create_document_symbol(
+          name: node.name.to_s,
+          kind: Constant::SymbolKind::FIELD,
           range_location: node.name_loc,
           selection_range_location: node.name_loc,
         )

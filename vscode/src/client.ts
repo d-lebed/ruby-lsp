@@ -53,12 +53,9 @@ interface ServerErrorTelemetryEvent {
 
 type ServerTelemetryEvent = ServerErrorTelemetryEvent;
 
-function enabledFeatureFlags() {
+function enabledFeatureFlags(): Record<string, boolean> {
   const allKeys = Object.keys(FEATURE_FLAGS) as (keyof typeof FEATURE_FLAGS)[];
-
-  return allKeys.map((key) => {
-    return { [key]: featureEnabled(key) };
-  });
+  return Object.fromEntries(allKeys.map((key) => [key, featureEnabled(key)]));
 }
 
 // Get the executables to start the server based on the user's configuration
@@ -84,7 +81,7 @@ function getLspExecutables(
   };
 
   // If there's a user defined custom bundle, we run the LSP with `bundle exec` and just trust the user configured
-  // their bundle. Otherwise, we run the global install of the LSP and use our custom bundle logic in the server
+  // their bundle. Otherwise, we run the global install of the LSP and use our composed bundle logic in the server
   if (customBundleGemfile.length > 0) {
     run = {
       command: "bundle",
@@ -157,6 +154,7 @@ function collectClientOptions(
 
   const features: EnabledFeatures = configuration.get("enabledFeatures")!;
   const enabledFeatures = Object.keys(features).filter((key) => features[key]);
+  const supportedSchemes = ["file", "git"];
 
   const fsPath = workspaceFolder.uri.fsPath.replace(/\/$/, "");
 
@@ -164,27 +162,36 @@ function collectClientOptions(
   // 1. Files inside of the workspace itself
   // 2. Bundled gems
   // 3. Default gems
-  let documentSelector: DocumentSelector = SUPPORTED_LANGUAGE_IDS.map(
+  let documentSelector: DocumentSelector = SUPPORTED_LANGUAGE_IDS.flatMap(
     (language) => {
-      return { language, pattern: `${fsPath}/**/*` };
+      return supportedSchemes.map((scheme) => {
+        return { scheme, language, pattern: `${fsPath}/**/*` };
+      });
     },
   );
 
   const pathConverter = ruby.pathConverter;
 
-  const pushAlternativePaths = (path: string) => {
-    [pathConverter.toLocalPath(path), pathConverter.toRemotePath(path)].forEach(
-      (convertedPath) => {
+  const pushAlternativePaths = (
+    path: string,
+    schemes: string[] = supportedSchemes,
+  ) => {
+    schemes.forEach((scheme) => {
+      [
+        pathConverter.toLocalPath(path),
+        pathConverter.toRemotePath(path),
+      ].forEach((convertedPath) => {
         if (convertedPath !== path) {
           SUPPORTED_LANGUAGE_IDS.forEach((language) => {
             documentSelector.push({
+              scheme,
               language,
               pattern: `${convertedPath}/**/*`,
             });
           });
         }
-      },
-    );
+      });
+    });
   };
 
   pushAlternativePaths(fsPath);
@@ -201,32 +208,39 @@ function collectClientOptions(
   }
 
   ruby.gemPath.forEach((gemPath) => {
-    documentSelector.push({
-      language: "ruby",
-      pattern: `${gemPath}/**/*`,
-    });
-
-    pushAlternativePaths(gemPath);
-
-    // Because of how default gems are installed, the gemPath location is actually not exactly where the files are
-    // located. With the regex, we are correcting the default gem path from this (where the files are not located)
-    // /opt/rubies/3.3.1/lib/ruby/gems/3.3.0
-    //
-    // to this (where the files are actually stored)
-    // /opt/rubies/3.3.1/lib/ruby/3.3.0
-    //
-    // Notice that we still need to add the regular path to the selector because some version managers will install gems
-    // under the non-corrected path
-    if (/lib\/ruby\/gems\/(?=\d)/.test(gemPath)) {
-      const fixedPath = gemPath.replace(/lib\/ruby\/gems\/(?=\d)/, "lib/ruby/");
-
+    supportedSchemes.forEach((scheme) => {
       documentSelector.push({
+        scheme,
         language: "ruby",
-        pattern: `${fixedPath}/**/*`,
+        pattern: `${gemPath}/**/*`,
       });
 
-      pushAlternativePaths(fixedPath);
-    }
+      pushAlternativePaths(gemPath, [scheme]);
+
+      // Because of how default gems are installed, the gemPath location is actually not exactly where the files are
+      // located. With the regex, we are correcting the default gem path from this (where the files are not located)
+      // /opt/rubies/3.3.1/lib/ruby/gems/3.3.0
+      //
+      // to this (where the files are actually stored)
+      // /opt/rubies/3.3.1/lib/ruby/3.3.0
+      //
+      // Notice that we still need to add the regular path to the selector because some version managers will install
+      // gems under the non-corrected path
+      if (/lib\/ruby\/gems\/(?=\d)/.test(gemPath)) {
+        const correctedPath = gemPath.replace(
+          /lib\/ruby\/gems\/(?=\d)/,
+          "lib/ruby/",
+        );
+
+        documentSelector.push({
+          scheme,
+          language: "ruby",
+          pattern: `${correctedPath}/**/*`,
+        });
+
+        pushAlternativePaths(correctedPath, [scheme]);
+      }
+    });
   });
 
   // Add other mapped paths to the document selector
@@ -241,15 +255,18 @@ function collectClientOptions(
       return;
     }
 
-    SUPPORTED_LANGUAGE_IDS.forEach((language) => {
-      documentSelector.push({
-        language,
-        pattern: `${local}/**/*`,
-      });
+    supportedSchemes.forEach((scheme) => {
+      SUPPORTED_LANGUAGE_IDS.forEach((language) => {
+        documentSelector.push({
+          language,
+          pattern: `${local}/**/*`,
+        });
 
-      documentSelector.push({
-        language,
-        pattern: `${remote}/**/*`,
+        documentSelector.push({
+          scheme,
+          language,
+          pattern: `${remote}/**/*`,
+        });
       });
     });
   });
@@ -293,9 +310,6 @@ function collectClientOptions(
     errorHandler: new ClientErrorHandler(workspaceFolder, telemetry),
     initializationOptions: {
       enabledFeatures,
-      experimentalFeaturesEnabled: configuration.get(
-        "enableExperimentalFeatures",
-      ),
       featuresConfiguration: configuration.get("featuresConfiguration"),
       formatter: configuration.get("formatter"),
       linters: configuration.get("linters"),
@@ -469,6 +483,10 @@ export default class Client extends LanguageClient implements ClientInterface {
       this.degraded = this.initializeResult?.degraded_mode;
     }
 
+    if (this.initializeResult?.bundle_env) {
+      this.ruby.mergeComposedEnvironment(this.initializeResult.bundle_env);
+    }
+
     await this.fetchAddons();
   }
 
@@ -580,7 +598,7 @@ export default class Client extends LanguageClient implements ClientInterface {
                 ...error.data,
                 serverVersion: this.serverVersion,
                 workspace: new vscode.TelemetryTrustedValue(
-                  this.workingDirectory,
+                  path.basename(this.workingDirectory),
                 ),
               },
             );
