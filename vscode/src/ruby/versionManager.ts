@@ -90,9 +90,13 @@ export abstract class VersionManager {
   }
 
   protected async runEnvActivationScript(activatedRuby: string) {
-    const result = await this.runRubyScript(
+    const result = await this.runRubyCode(
       `${activatedRuby} -W0 -rjson`,
       this.activationScript,
+    );
+
+    this.outputChannel.debug(
+      `Activation script output: ${JSON.stringify(result, null, 2)}`,
     );
 
     const activationContent = new RegExp(
@@ -129,27 +133,48 @@ export abstract class VersionManager {
     return asyncExec(command, execOptions);
   }
 
-  protected runRubyScript(
+  protected runRubyCode(
     rubyCommand: string,
-    script: string,
+    code: string,
   ): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, _reject) => {
       this.outputChannel.info(
-        `Ruby \`${rubyCommand}\` running Ruby script: \`${script}\``,
+        `Ruby \`${rubyCommand}\` running Ruby code: \`${code}\``,
       );
 
       const { command, args, env } = this.parseCommand(rubyCommand);
       const ruby = spawn(command, args, this.execOptions({ env }));
 
-      ruby.stdout.once("data", (data) => {
-        resolve({ stdout: data.toString(), stderr: "" });
+      let stdout = "";
+      let stderr = "";
+
+      ruby.stdout.on("data", (data) => {
+        this.outputChannel.debug(`stdout: '${data.toString()}'`);
+        if (data.toString().includes("END_OF_RUBY_CODE_OUTPUT")) {
+          stdout += data.toString().replace(/END_OF_RUBY_CODE_OUTPUT.*/s, "");
+          resolve({ stdout, stderr });
+        } else {
+          stdout += data.toString();
+        }
       });
-      ruby.stderr.once("data", (data) => {
-        resolve({ stdout: "", stderr: data.toString() });
+      ruby.stderr.on("data", (data) => {
+        this.outputChannel.debug(`stderr: '${data.toString()}'`);
+        stderr += data.toString();
       });
       ruby.on("error", (error) => {
         resolve({ stdout: "", stderr: error.message });
       });
+      ruby.on("close", () => {
+        resolve({ stdout, stderr });
+      });
+
+      const script = [
+        "begin",
+        ...code.split("\n").map((line) => `  ${line}`),
+        "ensure",
+        '  puts "END_OF_RUBY_CODE_OUTPUT"',
+        "end",
+      ].join("\n");
 
       ruby.stdin.write(script);
       ruby.stdin.end();
