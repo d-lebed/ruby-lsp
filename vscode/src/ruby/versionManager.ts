@@ -1,11 +1,13 @@
 /* eslint-disable no-process-env */
 import path from "path";
 import os from "os";
+import { ExecOptions, spawn } from "child_process";
 
 import * as vscode from "vscode";
+import { Executable } from "vscode-languageclient/node";
 
 import { WorkspaceChannel } from "../workspaceChannel";
-import { asyncExec } from "../common";
+import { asyncExec, PathConverterInterface } from "../common";
 
 export interface ActivationResult {
   env: NodeJS.ProcessEnv;
@@ -15,6 +17,22 @@ export interface ActivationResult {
 }
 
 export const ACTIVATION_SEPARATOR = "RUBY_LSP_ACTIVATION_SEPARATOR";
+
+export class PathConverter implements PathConverterInterface {
+  readonly pathMapping: [string, string][] = [];
+
+  toRemotePath(path: string) {
+    return path;
+  }
+
+  toLocalPath(path: string) {
+    return path;
+  }
+
+  toRemoteUri(path: string) {
+    return vscode.Uri.file(path);
+  }
+}
 
 export abstract class VersionManager {
   public activationScript = [
@@ -59,9 +77,26 @@ export abstract class VersionManager {
   // language server
   abstract activate(): Promise<ActivationResult>;
 
+  runActivatedScript(command: string, options: ExecOptions = {}) {
+    return this.runScript(command, options);
+  }
+
+  activateExecutable(executable: Executable) {
+    return executable;
+  }
+
+  async buildPathConverter(_workspaceFolder: vscode.WorkspaceFolder) {
+    return new PathConverter();
+  }
+
   protected async runEnvActivationScript(activatedRuby: string) {
-    const result = await this.runScript(
-      `${activatedRuby} -W0 -rjson -e '${this.activationScript}'`,
+    const result = await this.runRubyCode(
+      `${activatedRuby} -W0 -rjson`,
+      this.activationScript,
+    );
+
+    this.outputChannel.debug(
+      `Activation script output: ${JSON.stringify(result, null, 2)}`,
     );
 
     const activationContent = new RegExp(
@@ -85,28 +120,117 @@ export abstract class VersionManager {
 
   // Runs the given command in the directory for the Bundle, using the user's preferred shell and inheriting the current
   // process environment
-  protected runScript(command: string) {
-    let shell: string | undefined;
+  protected runScript(command: string, options: ExecOptions = {}) {
+    const execOptions = this.execOptions(options);
+
+    this.outputChannel.info(
+      `Running command: \`${command}\` in ${execOptions.cwd} using shell: ${execOptions.shell}`,
+    );
+    this.outputChannel.debug(
+      `Environment used for command: ${JSON.stringify(execOptions.env)}`,
+    );
+
+    return asyncExec(command, execOptions);
+  }
+
+  protected runRubyCode(
+    rubyCommand: string,
+    code: string,
+  ): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, _reject) => {
+      this.outputChannel.info(
+        `Ruby \`${rubyCommand}\` running Ruby code: \`${code}\``,
+      );
+
+      const { command, args, env } = this.parseCommand(rubyCommand);
+      const ruby = spawn(command, args, this.execOptions({ env }));
+
+      let stdout = "";
+      let stderr = "";
+
+      ruby.stdout.on("data", (data) => {
+        this.outputChannel.debug(`stdout: '${data.toString()}'`);
+        if (data.toString().includes("END_OF_RUBY_CODE_OUTPUT")) {
+          stdout += data.toString().replace(/END_OF_RUBY_CODE_OUTPUT.*/s, "");
+          resolve({ stdout, stderr });
+        } else {
+          stdout += data.toString();
+        }
+      });
+      ruby.stderr.on("data", (data) => {
+        this.outputChannel.debug(`stderr: '${data.toString()}'`);
+        stderr += data.toString();
+      });
+      ruby.on("error", (error) => {
+        resolve({ stdout: "", stderr: error.message });
+      });
+      ruby.on("close", () => {
+        resolve({ stdout, stderr });
+      });
+
+      const script = [
+        "begin",
+        ...code.split("\n").map((line) => `  ${line}`),
+        "ensure",
+        '  puts "END_OF_RUBY_CODE_OUTPUT"',
+        "end",
+      ].join("\n");
+
+      ruby.stdin.write(script);
+      ruby.stdin.end();
+    });
+  }
+
+  protected execOptions(options: ExecOptions = {}): ExecOptions {
+    const execOptions = {
+      cwd: this.bundleUri.fsPath,
+      ...options,
+      env: { ...process.env, ...options.env },
+    };
 
     // If the user has configured a default shell, we use that one since they are probably sourcing their version
     // manager scripts in that shell's configuration files. On Windows, we never set the shell no matter what to ensure
     // that activation runs on `cmd.exe` and not PowerShell, which avoids complex quoting and escaping issues.
-    if (vscode.env.shell.length > 0 && os.platform() !== "win32") {
-      shell = vscode.env.shell;
+    if (
+      !options.shell &&
+      vscode.env.shell.length > 0 &&
+      os.platform() !== "win32"
+    ) {
+      execOptions.shell = vscode.env.shell;
     }
 
-    this.outputChannel.info(
-      `Running command: \`${command}\` in ${this.bundleUri.fsPath} using shell: ${shell}`,
-    );
-    this.outputChannel.debug(
-      `Environment used for command: ${JSON.stringify(process.env)}`,
-    );
+    return execOptions;
+  }
 
-    return asyncExec(command, {
-      cwd: this.bundleUri.fsPath,
-      shell,
-      env: process.env,
-    });
+  // Parses a command string into its command, arguments, and environment variables
+  protected parseCommand(commandString: string): {
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+  } {
+    // Regular expression to split arguments while respecting quotes
+    const regex = /(?:[^\s"']+|"[^"]*"|'[^']*')+/g;
+
+    const parts =
+      commandString.match(regex)?.map((arg) => {
+        // Remove surrounding quotes, if any
+        return arg.replace(/^['"]|['"]$/g, "");
+      }) ?? [];
+
+    // Extract environment variables
+    const env: Record<string, string> = {};
+    while (parts[0] && parts[0].includes("=")) {
+      const [key, value] = parts.shift()?.split("=") ?? [];
+      if (key) {
+        env[key] = value || "";
+      }
+    }
+
+    // The first part is the command, the rest are arguments
+    const command = parts.shift() || "";
+    const args = parts;
+
+    return { command, args, env };
   }
 
   // Tries to find `execName` within the given directories. Prefers the executables found in the given directories over
