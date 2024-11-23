@@ -89,7 +89,7 @@ export class Compose extends VersionManager {
   }
 
   protected composeRunCommand(): string {
-    return `${this.composeCommand()} run --rm -i --no-deps`;
+    return `${this.composeCommand()} run --rm -i`;
   }
 
   protected composeServiceName(): string {
