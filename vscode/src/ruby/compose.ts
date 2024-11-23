@@ -61,22 +61,20 @@ export class Compose extends VersionManager {
     const config = JSON.parse(configJson.stdout);
     const pathMapping = fetchPathMapping(config, this.composeServiceName());
 
-    const filteredMapping = await Object.entries(pathMapping).reduce(
-      async (accPromise: Promise<Record<string, string>>, [local, remote]) => {
-        const acc = await accPromise;
-        const absolutePath = path.resolve(workspaceFolder.uri.fsPath, local);
+    const stats = Object.entries(pathMapping).map(([local, remote]) => {
+      const absolute = path.resolve(workspaceFolder.uri.fsPath, local);
+      return vscode.workspace.fs.stat(vscode.Uri.file(absolute)).then(
+        (stat) => ({ stat, local, remote, absolute }),
+        () => ({ stat: undefined, local, remote, absolute }),
+      );
+    });
 
-        try {
-          const localStat = await vscode.workspace.fs.stat(
-            vscode.Uri.file(absolutePath),
-          );
-
-          if (localStat.type === vscode.FileType.Directory) {
-            this.outputChannel.info(`Path ${absolutePath} mapped to ${remote}`);
-
-            acc[absolutePath] = remote;
-          }
-        } catch (error) {
+    const filteredMapping = (await Promise.all(stats)).reduce(
+      (acc, { stat, local, remote, absolute }) => {
+        if (stat?.type === vscode.FileType.Directory) {
+          this.outputChannel.info(`Path ${absolute} mapped to ${remote}`);
+          acc[absolute] = remote;
+        } else {
           this.outputChannel.debug(
             `Skipping path ${local} because it does not exist`,
           );
@@ -84,7 +82,7 @@ export class Compose extends VersionManager {
 
         return acc;
       },
-      Promise.resolve({}),
+      {} as Record<string, string>,
     );
 
     return new ContainerPathConverter(filteredMapping, this.outputChannel);
