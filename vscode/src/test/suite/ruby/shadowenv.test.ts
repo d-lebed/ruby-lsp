@@ -13,6 +13,7 @@ import { WorkspaceChannel } from "../../../workspaceChannel";
 import { LOG_CHANNEL, asyncExec } from "../../../common";
 import { RUBY_VERSION } from "../../rubyVersion";
 import * as common from "../../../common";
+import { createSpawnStub } from "../testHelpers";
 
 suite("Shadowenv", () => {
   if (os.platform() === "win32") {
@@ -220,19 +221,21 @@ suite("Shadowenv", () => {
       shadowLispFile,
     );
 
+    // First, reject the call to `shadowenv exec`.
+    const { spawnStub } = createSpawnStub();
+    spawnStub.rejects(new Error("shadowenv: command not found"));
+
+    // Then reject the call to `shadowenv --version`
+    const execStub = sinon
+      .stub(common, "asyncExec")
+      .rejects(new Error("shadowenv: command not found"));
+
     const shadowenv = new Shadowenv(
       workspaceFolder,
       outputChannel,
       async () => {},
+      spawnStub,
     );
-
-    // First, reject the call to `shadowenv exec`. Then resolve the call to `which shadowenv` to return nothing
-    const execStub = sinon
-      .stub(common, "asyncExec")
-      .onFirstCall()
-      .rejects(new Error("shadowenv: command not found"))
-      .onSecondCall()
-      .rejects(new Error("shadowenv: command not found"));
 
     await assert.rejects(async () => {
       await shadowenv.activate();

@@ -143,7 +143,7 @@ export abstract class VersionManager {
     rubyCommand: string,
     code: string,
   ): Promise<{ stdout: string; stderr: string }> {
-    return new Promise((resolve, _reject) => {
+    return new Promise((resolve, reject) => {
       this.outputChannel.info(
         `Ruby \`${rubyCommand}\` running Ruby code: \`${code}\``,
       );
@@ -168,10 +168,14 @@ export abstract class VersionManager {
         stderr += data.toString();
       });
       ruby.on("error", (error) => {
-        resolve({ stdout: "", stderr: error.message });
+        reject(error);
       });
-      ruby.on("close", () => {
-        resolve({ stdout, stderr });
+      ruby.on("close", (status) => {
+        if (status) {
+          reject(new Error(`Process exited with status ${status}: ${stderr}`));
+        } else {
+          resolve({ stdout, stderr });
+        }
       });
 
       const script = [
