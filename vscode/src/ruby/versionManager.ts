@@ -46,12 +46,16 @@ export abstract class VersionManager {
   protected readonly bundleUri: vscode.Uri;
   protected readonly manuallySelectRuby: () => Promise<void>;
 
+  // Add spawn as a protected property
+  protected spawnFn: typeof spawn;
+
   private readonly customBundleGemfile?: string;
 
   constructor(
     workspaceFolder: vscode.WorkspaceFolder,
     outputChannel: WorkspaceChannel,
     manuallySelectRuby: () => Promise<void>,
+    spawnFn: typeof spawn = spawn,
   ) {
     this.workspaceFolder = workspaceFolder;
     this.outputChannel = outputChannel;
@@ -71,6 +75,8 @@ export abstract class VersionManager {
     this.bundleUri = this.customBundleGemfile
       ? vscode.Uri.file(path.dirname(this.customBundleGemfile))
       : workspaceFolder.uri;
+
+    this.spawnFn = spawnFn;
   }
 
   // Activate the Ruby environment for the version manager, returning all of the necessary information to boot the
@@ -143,7 +149,7 @@ export abstract class VersionManager {
       );
 
       const { command, args, env } = this.parseCommand(rubyCommand);
-      const ruby = spawn(command, args, this.execOptions({ env }));
+      const ruby = this.spawnFn(command, args, this.execOptions({ env }));
 
       let stdout = "";
       let stderr = "";

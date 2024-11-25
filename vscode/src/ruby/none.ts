@@ -1,4 +1,6 @@
 /* eslint-disable no-process-env */
+import { spawn } from "child_process";
+
 import * as vscode from "vscode";
 
 import { WorkspaceChannel } from "../workspaceChannel";
@@ -21,8 +23,10 @@ export class None extends VersionManager {
     outputChannel: WorkspaceChannel,
     manuallySelectRuby: () => Promise<void>,
     rubyPath?: string,
+    spawnFn?: typeof spawn,
   ) {
-    super(workspaceFolder, outputChannel, manuallySelectRuby);
+    super(workspaceFolder, outputChannel, manuallySelectRuby, spawnFn);
+
     this.rubyPath = rubyPath ?? "ruby";
   }
 

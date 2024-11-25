@@ -10,6 +10,7 @@ import { Rvm } from "../../../ruby/rvm";
 import { WorkspaceChannel } from "../../../workspaceChannel";
 import * as common from "../../../common";
 import { ACTIVATION_SEPARATOR } from "../../../ruby/versionManager";
+import { createSpawnStub } from "../testHelpers";
 
 suite("RVM", () => {
   if (os.platform() === "win32") {
@@ -26,7 +27,25 @@ suite("RVM", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
-    const rvm = new Rvm(workspaceFolder, outputChannel, async () => {});
+
+    const envStub = {
+      env: {
+        ANY: "true",
+      },
+      yjit: true,
+      version: "3.0.0",
+    };
+
+    const { spawnStub, stdinData } = createSpawnStub({
+      stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
+    });
+
+    const rvm = new Rvm(
+      workspaceFolder,
+      outputChannel,
+      async () => {},
+      spawnStub,
+    );
 
     const installationPathStub = sinon
       .stub(rvm, "findRvmInstallation")
@@ -39,24 +58,12 @@ suite("RVM", () => {
         ),
       );
 
-    const envStub = {
-      env: {
-        ANY: "true",
-      },
-      yjit: true,
-      version: "3.0.0",
-    };
-
-    const execStub = sinon.stub(common, "asyncExec").resolves({
-      stdout: "",
-      stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
     const { env, version, yjit } = await rvm.activate();
 
     assert.ok(
-      execStub.calledOnceWithExactly(
-        `${path.join(os.homedir(), ".rvm", "bin", "rvm-auto-ruby")} -W0 -rjson -e '${rvm.activationScript}'`,
+      spawnStub.calledOnceWithExactly(
+        path.join(os.homedir(), ".rvm", "bin", "rvm-auto-ruby"),
+        ["-W0", "-rjson"],
         {
           cwd: workspacePath,
           shell: vscode.env.shell,
@@ -65,11 +72,12 @@ suite("RVM", () => {
       ),
     );
 
+    assert.ok(stdinData.join("\n").includes(rvm.activationScript));
+
     assert.strictEqual(version, "3.0.0");
     assert.strictEqual(yjit, true);
     assert.deepStrictEqual(env.ANY, "true");
 
-    execStub.restore();
     installationPathStub.restore();
   });
 });

@@ -10,6 +10,7 @@ import { Mise } from "../../../ruby/mise";
 import { WorkspaceChannel } from "../../../workspaceChannel";
 import * as common from "../../../common";
 import { ACTIVATION_SEPARATOR } from "../../../ruby/versionManager";
+import { createSpawnStub } from "../testHelpers";
 
 suite("Mise", () => {
   if (os.platform() === "win32") {
@@ -27,7 +28,6 @@ suite("Mise", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
-    const mise = new Mise(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -35,10 +35,17 @@ suite("Mise", () => {
       version: "3.0.0",
     };
 
-    const execStub = sinon.stub(common, "asyncExec").resolves({
-      stdout: "",
+    const { spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
     });
+
+    const mise = new Mise(
+      workspaceFolder,
+      outputChannel,
+      async () => {},
+      spawnStub,
+    );
+
     const findStub = sinon
       .stub(mise, "findMiseUri")
       .resolves(
@@ -53,8 +60,9 @@ suite("Mise", () => {
     const { env, version, yjit } = await mise.activate();
 
     assert.ok(
-      execStub.calledOnceWithExactly(
-        `${os.homedir()}/.local/bin/mise x -- ruby -W0 -rjson -e '${mise.activationScript}'`,
+      spawnStub.calledOnceWithExactly(
+        `${os.homedir()}/.local/bin/mise`,
+        ["x", "--", "ruby", "-W0", "-rjson"],
         {
           cwd: workspacePath,
           shell: vscode.env.shell,
@@ -64,11 +72,12 @@ suite("Mise", () => {
       ),
     );
 
+    assert.ok(stdinData.join("\n").includes(mise.activationScript));
+
     assert.strictEqual(version, "3.0.0");
     assert.strictEqual(yjit, true);
     assert.deepStrictEqual(env.ANY, "true");
 
-    execStub.restore();
     findStub.restore();
   });
 
@@ -82,7 +91,6 @@ suite("Mise", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
-    const mise = new Mise(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -90,10 +98,16 @@ suite("Mise", () => {
       version: "3.0.0",
     };
 
-    const execStub = sinon.stub(common, "asyncExec").resolves({
-      stdout: "",
+    const { spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
     });
+
+    const mise = new Mise(
+      workspaceFolder,
+      outputChannel,
+      async () => {},
+      spawnStub,
+    );
 
     const misePath = path.join(workspacePath, "mise");
     fs.writeFileSync(misePath, "fakeMiseBinary");
@@ -112,8 +126,9 @@ suite("Mise", () => {
     const { env, version, yjit } = await mise.activate();
 
     assert.ok(
-      execStub.calledOnceWithExactly(
-        `${misePath} x -- ruby -W0 -rjson -e '${mise.activationScript}'`,
+      spawnStub.calledOnceWithExactly(
+        misePath,
+        ["x", "--", "ruby", "-W0", "-rjson"],
         {
           cwd: workspacePath,
           shell: vscode.env.shell,
@@ -123,11 +138,12 @@ suite("Mise", () => {
       ),
     );
 
+    assert.ok(stdinData.join("\n").includes(mise.activationScript));
+
     assert.strictEqual(version, "3.0.0");
     assert.strictEqual(yjit, true);
     assert.deepStrictEqual(env.ANY, "true");
 
-    execStub.restore();
     configStub.restore();
     fs.rmSync(workspacePath, { recursive: true, force: true });
   });
