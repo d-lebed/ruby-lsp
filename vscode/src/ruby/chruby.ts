@@ -1,6 +1,7 @@
 /* eslint-disable no-process-env */
 import os from "os";
 import path from "path";
+import { spawn } from "child_process";
 
 import * as vscode from "vscode";
 
@@ -32,8 +33,9 @@ export class Chruby extends VersionManager {
     workspaceFolder: vscode.WorkspaceFolder,
     outputChannel: WorkspaceChannel,
     manuallySelectRuby: () => Promise<void>,
+    spawnFn?: typeof spawn,
   ) {
-    super(workspaceFolder, outputChannel, manuallySelectRuby);
+    super(workspaceFolder, outputChannel, manuallySelectRuby, spawnFn);
 
     const configuredRubies = vscode.workspace
       .getConfiguration("rubyLsp")
