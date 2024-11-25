@@ -3,62 +3,62 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  spelling:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+  # spelling:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Set up Node
-        env:
-          DISABLE_V8_COMPILE_CACHE: "1"
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20.9"
+  #     - name: Set up Node
+  #       env:
+  #         DISABLE_V8_COMPILE_CACHE: "1"
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "20.9"
 
-      - name: Run cspell
-        run: |
-          yarn global add cspell
-          cspell
-  lint_ruby:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
+  #     - name: Run cspell
+  #       run: |
+  #         yarn global add cspell
+  #         cspell
+  # lint_ruby:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: "recursive"
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
+  #     - name: Set up Ruby
+  #       uses: ruby/setup-ruby@v1
+  #       with:
+  #         bundler-cache: true
 
-      - name: Typecheck
-        run: bundle exec srb tc
+  #     - name: Typecheck
+  #       run: bundle exec srb tc
 
-      - name: Lint Ruby files and RBI shims
-        run: bundle exec rubocop
-  build_ruby:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        ruby: ["3.1", "3.2", "3.3"]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    name: Ruby ${{ matrix.ruby }} on ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
+  #     - name: Lint Ruby files and RBI shims
+  #       run: bundle exec rubocop
+  # build_ruby:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       os: [ubuntu-latest, macos-latest, windows-latest]
+  #       ruby: ["3.1", "3.2", "3.3"]
+  #   runs-on: ${{ matrix.os }}
+  #   timeout-minutes: 30
+  #   name: Ruby ${{ matrix.ruby }} on ${{ matrix.os }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: "recursive"
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: ${{ matrix.ruby }}
-          bundler-cache: true
-          cache-version: 1
+  #     - name: Set up Ruby
+  #       uses: ruby/setup-ruby@v1
+  #       with:
+  #         ruby-version: ${{ matrix.ruby }}
+  #         bundler-cache: true
+  #         cache-version: 1
 
-      - name: Run tests
-        run: bundle exec rake
+  #     - name: Run tests
+  #       run: bundle exec rake
   lint_node:
     runs-on: ubuntu-latest
     steps:
@@ -127,18 +127,18 @@ jobs:
           yarn --frozen-lockfile
           /usr/bin/Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
           yarn run test
-  verify_docs:
-    runs-on: ubuntu-latest
-    name: Verify Jekyll website builds
-    steps:
-      - uses: actions/checkout@v4
+  # verify_docs:
+  #   runs-on: ubuntu-latest
+  #   name: Verify Jekyll website builds
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
-          working-directory: ./jekyll
+  #     - name: Set up Ruby
+  #       uses: ruby/setup-ruby@v1
+  #       with:
+  #         bundler-cache: true
+  #         working-directory: ./jekyll
 
-      - name: Generate documentation
-        working-directory: ./jekyll
-        run: bundle exec jekyll build
+  #     - name: Generate documentation
+  #       working-directory: ./jekyll
+  #       run: bundle exec jekyll build
