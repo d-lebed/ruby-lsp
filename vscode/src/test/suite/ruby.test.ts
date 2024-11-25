@@ -8,8 +8,8 @@ import sinon from "sinon";
 import { Ruby, ManagerIdentifier } from "../../ruby";
 import { WorkspaceChannel } from "../../workspaceChannel";
 import { LOG_CHANNEL } from "../../common";
-import * as common from "../../common";
 import { ACTIVATION_SEPARATOR } from "../../ruby/versionManager";
+import { Rbenv } from "../../ruby/rbenv";
 
 import { FAKE_TELEMETRY } from "./fakeTelemetry";
 
@@ -130,10 +130,12 @@ suite("Ruby environment activation", () => {
       gemPath: ["~/.gem/ruby/3.3.5", "/opt/rubies/3.3.5/lib/ruby/gems/3.3.0"],
     };
 
-    const execStub = sinon.stub(common, "asyncExec").resolves({
-      stdout: "",
-      stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
+    const runRubyCodeStub = sinon
+      .stub<any, any>(Rbenv.prototype, "runRubyCode")
+      .resolves({
+        stdout: "",
+        stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
+      });
 
     const ruby = new Ruby(
       context,
@@ -142,7 +144,7 @@ suite("Ruby environment activation", () => {
       FAKE_TELEMETRY,
     );
     await ruby.activateRuby();
-    execStub.restore();
+    runRubyCodeStub.restore();
     configStub.restore();
 
     assert.deepStrictEqual(ruby.gemPath, [
