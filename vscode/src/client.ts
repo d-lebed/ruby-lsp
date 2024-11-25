@@ -520,7 +520,7 @@ export default class Client extends LanguageClient implements ClientInterface {
   ): Promise<{ ast: string } | null> {
     return this.sendRequest("rubyLsp/textDocument/showSyntaxTree", {
       textDocument: {
-        uri: this.pathConverter.toRemoteUri(uri.fsPath).toString(),
+        uri: this.pathConverter.toRemoteUri(uri).toString(),
       },
       range,
     });
@@ -717,9 +717,7 @@ export default class Client extends LanguageClient implements ClientInterface {
         token,
         _next,
       ) => {
-        const remoteUri = document.uri.with({
-          path: this.pathConverter.toRemotePath(document.uri.fsPath),
-        });
+        const remoteUri = this.pathConverter.toRemoteUri(document.uri);
 
         const response: vscode.TextEdit[] | null = await this.sendRequest(
           "textDocument/onTypeFormatting",

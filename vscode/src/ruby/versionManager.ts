@@ -29,8 +29,8 @@ export class PathConverter implements PathConverterInterface {
     return path;
   }
 
-  toRemoteUri(path: string) {
-    return vscode.Uri.file(path);
+  toRemoteUri(localUri: vscode.Uri) {
+    return localUri;
   }
 }
 

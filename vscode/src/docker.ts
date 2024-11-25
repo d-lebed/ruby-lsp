@@ -77,8 +77,8 @@ export class ContainerPathConverter implements PathConverterInterface {
     return path;
   }
 
-  toRemoteUri(path: string) {
-    return vscode.Uri.file(this.toRemotePath(path));
+  toRemoteUri(localUri: vscode.Uri) {
+    return localUri.with({ path: this.toRemotePath(localUri.fsPath) });
   }
 }
 

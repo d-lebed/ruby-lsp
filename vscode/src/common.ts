@@ -67,7 +67,7 @@ export interface PathConverterInterface {
   pathMapping: [string, string][];
   toRemotePath: (localPath: string) => string;
   toLocalPath: (remotePath: string) => string;
-  toRemoteUri: (localPath: string) => vscode.Uri;
+  toRemoteUri: (localUri: vscode.Uri) => vscode.Uri;
 }
 
 // Event emitter used to signal that the language status items need to be refreshed
