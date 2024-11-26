@@ -286,14 +286,13 @@ function collectClientOptions(
   // Map using pathMapping
   const code2Protocol = (uri: vscode.Uri) => {
     const remotePath = pathConverter.toRemotePath(uri.fsPath);
-    return uri.with({ path: remotePath }).toString();
+    return vscode.Uri.file(remotePath).toString();
   };
 
   const protocol2Code = (uri: string) => {
     const remoteUri = vscode.Uri.parse(uri);
-    return remoteUri.with({
-      path: pathConverter.toLocalPath(remoteUri.fsPath),
-    });
+    const localPath = pathConverter.toLocalPath(remoteUri.fsPath);
+    return vscode.Uri.file(localPath);
   };
 
   return {
@@ -816,13 +815,12 @@ export default class Client extends LanguageClient implements ClientInterface {
 
             case "textDocument/codeAction":
               return result.map((action: { uri: string }) => {
-                const file = vscode.Uri.parse(action.uri);
+                const remotePath = vscode.Uri.parse(action.uri).fsPath;
+                const localPath = this.pathConverter.toLocalPath(remotePath);
 
                 return {
                   ...action,
-                  uri: file
-                    .with({ path: this.pathConverter.toLocalPath(file.fsPath) })
-                    .toString(),
+                  uri: vscode.Uri.file(localPath).toString(),
                 };
               });
 
@@ -832,9 +830,13 @@ export default class Client extends LanguageClient implements ClientInterface {
                 result.contents.value
               ) {
                 result.contents.value = result.contents.value.replace(
-                  /\(file:\/\/(.+?)#/gim,
-                  (_match: string, path: string) =>
-                    `(file://${this.pathConverter.toLocalPath(path)}#`,
+                  /\((file:\/\/.+?)#/gim,
+                  (_match: string, path: string) => {
+                    const remotePath = vscode.Uri.parse(path).fsPath;
+                    const localPath =
+                      this.pathConverter.toLocalPath(remotePath);
+                    return `(${vscode.Uri.file(localPath).toString()}#`;
+                  },
                 );
               }
               break;

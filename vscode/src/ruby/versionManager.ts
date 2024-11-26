@@ -192,24 +192,21 @@ export abstract class VersionManager {
   }
 
   protected execOptions(options: ExecOptions = {}): ExecOptions {
-    const execOptions = {
-      cwd: this.bundleUri.fsPath,
-      ...options,
-      env: { ...process.env, ...options.env },
-    };
+    let shell: string | undefined;
 
     // If the user has configured a default shell, we use that one since they are probably sourcing their version
     // manager scripts in that shell's configuration files. On Windows, we never set the shell no matter what to ensure
     // that activation runs on `cmd.exe` and not PowerShell, which avoids complex quoting and escaping issues.
-    if (
-      !options.shell &&
-      vscode.env.shell.length > 0 &&
-      os.platform() !== "win32"
-    ) {
-      execOptions.shell = vscode.env.shell;
+    if (vscode.env.shell.length > 0 && os.platform() !== "win32") {
+      shell = vscode.env.shell;
     }
 
-    return execOptions;
+    return {
+      cwd: this.bundleUri.fsPath,
+      shell,
+      ...options,
+      env: { ...process.env, ...options.env },
+    };
   }
 
   // Parses a command string into its command, arguments, and environment variables
