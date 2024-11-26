@@ -27,6 +27,8 @@ suite("Shadowenv", () => {
   let workspaceFolder: vscode.WorkspaceFolder;
   let outputChannel: WorkspaceChannel;
   let rubyBinPath: string;
+  let spawnStub: sinon.SinonStub;
+
   const [major, minor, patch] = RUBY_VERSION.split(".");
 
   if (process.env.CI && os.platform() === "linux") {
@@ -112,6 +114,8 @@ suite("Shadowenv", () => {
 
   afterEach(() => {
     fs.rmSync(rootPath, { recursive: true, force: true });
+
+    spawnStub?.restore();
   });
 
   test("Finds Ruby only binary path is appended to PATH", async () => {
@@ -221,21 +225,20 @@ suite("Shadowenv", () => {
       shadowLispFile,
     );
 
+    const shadowenv = new Shadowenv(
+      workspaceFolder,
+      outputChannel,
+      async () => {},
+    );
+
     // First, reject the call to `shadowenv exec`.
-    const { spawnStub } = createSpawnStub();
+    ({ spawnStub } = createSpawnStub());
     spawnStub.rejects(new Error("shadowenv: command not found"));
 
     // Then reject the call to `shadowenv --version`
     const execStub = sinon
       .stub(common, "asyncExec")
       .rejects(new Error("shadowenv: command not found"));
-
-    const shadowenv = new Shadowenv(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
 
     await assert.rejects(async () => {
       await shadowenv.activate();

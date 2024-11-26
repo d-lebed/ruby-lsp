@@ -3,6 +3,8 @@ import { SpawnOptions } from "child_process";
 
 import sinon from "sinon";
 
+import * as common from "../../common";
+
 interface SpawnStubOptions {
   stdout?: string;
   stderr?: string;
@@ -17,35 +19,41 @@ export function createSpawnStub({
   const stdinData: string[] = [];
 
   const spawnStub = sinon
-    .stub()
-    .callsFake((_command: string, _args: string[], _options: SpawnOptions) => {
-      const childProcess = new EventEmitter() as any;
+    .stub(common, "spawn")
+    .callsFake(
+      (
+        _command: string,
+        _args: ReadonlyArray<string>,
+        _options: SpawnOptions,
+      ) => {
+        const childProcess = new EventEmitter() as any;
 
-      childProcess.stdout = new Readable({
-        read() {},
-      });
-      childProcess.stderr = new Readable({
-        read() {},
-      });
-      childProcess.stdin = new Writable({
-        write(chunk, _encoding, callback) {
-          stdinData.push(chunk.toString());
-          callback();
-        },
-        final(callback) {
-          process.nextTick(() => {
-            childProcess.stdout.emit("data", stdout);
-            childProcess.stderr.emit("data", stderr);
+        childProcess.stdout = new Readable({
+          read() {},
+        });
+        childProcess.stderr = new Readable({
+          read() {},
+        });
+        childProcess.stdin = new Writable({
+          write(chunk, _encoding, callback) {
+            stdinData.push(chunk.toString());
+            callback();
+          },
+          final(callback) {
+            process.nextTick(() => {
+              childProcess.stdout.emit("data", stdout);
+              childProcess.stderr.emit("data", stderr);
 
-            childProcess.emit("close", exitCode);
-          });
+              childProcess.emit("close", exitCode);
+            });
 
-          callback();
-        },
-      });
+            callback();
+          },
+        });
 
-      return childProcess;
-    });
+        return childProcess;
+      },
+    );
 
   return { spawnStub, stdinData };
 }

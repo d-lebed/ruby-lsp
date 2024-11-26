@@ -12,6 +12,13 @@ import { ACTIVATION_SEPARATOR } from "../../../ruby/versionManager";
 import { createSpawnStub } from "../testHelpers";
 
 suite("None", () => {
+  let spawnStub: sinon.SinonStub;
+  let stdinData: string[];
+
+  teardown(() => {
+    spawnStub?.restore();
+  });
+
   test("Invokes Ruby directly", async () => {
     const workspacePath = fs.mkdtempSync(
       path.join(os.tmpdir(), "ruby-lsp-test-"),
@@ -23,6 +30,7 @@ suite("None", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const none = new None(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -30,17 +38,9 @@ suite("None", () => {
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const none = new None(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      "ruby",
-      spawnStub,
-    );
+    }));
 
     const { env, version, yjit } = await none.activate();
 

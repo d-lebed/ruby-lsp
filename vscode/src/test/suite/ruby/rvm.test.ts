@@ -19,6 +19,13 @@ suite("RVM", () => {
     return;
   }
 
+  let spawnStub: sinon.SinonStub;
+  let stdinData: string[];
+
+  teardown(() => {
+    spawnStub?.restore();
+  });
+
   test("Populates the gem env and path", async () => {
     const workspacePath = process.env.PWD!;
     const workspaceFolder = {
@@ -27,25 +34,7 @@ suite("RVM", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
-
-    const envStub = {
-      env: {
-        ANY: "true",
-      },
-      yjit: true,
-      version: "3.0.0",
-    };
-
-    const { spawnStub, stdinData } = createSpawnStub({
-      stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const rvm = new Rvm(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    const rvm = new Rvm(workspaceFolder, outputChannel, async () => {});
 
     const installationPathStub = sinon
       .stub(rvm, "findRvmInstallation")
@@ -57,6 +46,18 @@ suite("RVM", () => {
           "rvm-auto-ruby",
         ),
       );
+
+    const envStub = {
+      env: {
+        ANY: "true",
+      },
+      yjit: true,
+      version: "3.0.0",
+    };
+
+    ({ spawnStub, stdinData } = createSpawnStub({
+      stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
+    }));
 
     const { env, version, yjit } = await rvm.activate();
 

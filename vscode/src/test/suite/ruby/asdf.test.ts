@@ -18,6 +18,13 @@ suite("Asdf", () => {
     return;
   }
 
+  let spawnStub: sinon.SinonStub;
+  let stdinData: string[];
+
+  teardown(() => {
+    spawnStub?.restore();
+  });
+
   test("Finds Ruby based on .tool-versions", async () => {
     // eslint-disable-next-line no-process-env
     const workspacePath = process.env.PWD!;
@@ -27,22 +34,16 @@ suite("Asdf", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const asdf = new Asdf(workspaceFolder, outputChannel, async () => {});
     const envStub = {
       env: { ANY: "true" },
       yjit: true,
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const asdf = new Asdf(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const findInstallationStub = sinon
       .stub(asdf, "findAsdfInstallation")
@@ -91,22 +92,16 @@ suite("Asdf", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const asdf = new Asdf(workspaceFolder, outputChannel, async () => {});
     const envStub = {
       env: { ANY: "true" },
       yjit: true,
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const asdf = new Asdf(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const findInstallationStub = sinon
       .stub(asdf, "findAsdfInstallation")

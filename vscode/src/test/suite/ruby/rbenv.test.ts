@@ -19,6 +19,13 @@ suite("Rbenv", () => {
     return;
   }
 
+  let spawnStub: sinon.SinonStub;
+  let stdinData: string[];
+
+  teardown(() => {
+    spawnStub?.restore();
+  });
+
   test("Finds Ruby based on .ruby-version", async () => {
     // eslint-disable-next-line no-process-env
     const workspacePath = process.env.PWD!;
@@ -28,6 +35,7 @@ suite("Rbenv", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const rbenv = new Rbenv(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -35,16 +43,9 @@ suite("Rbenv", () => {
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const rbenv = new Rbenv(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const { env, version, yjit } = await rbenv.activate();
 
@@ -78,6 +79,7 @@ suite("Rbenv", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const rbenv = new Rbenv(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -85,16 +87,9 @@ suite("Rbenv", () => {
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const rbenv = new Rbenv(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const rbenvPath = path.join(workspacePath, "rbenv");
     fs.writeFileSync(rbenvPath, "fakeRbenvBinary");
@@ -144,17 +139,11 @@ suite("Rbenv", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const rbenv = new Rbenv(workspaceFolder, outputChannel, async () => {});
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}not a json${ACTIVATION_SEPARATOR}`,
-    });
-
-    const rbenv = new Rbenv(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const errorStub = sinon.stub(outputChannel, "error");
 

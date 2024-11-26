@@ -13,6 +13,13 @@ import { ACTIVATION_SEPARATOR } from "../../../ruby/versionManager";
 import { createSpawnStub } from "../testHelpers";
 
 suite("Custom", () => {
+  let spawnStub: sinon.SinonStub;
+  let stdinData: string[];
+
+  teardown(() => {
+    spawnStub?.restore();
+  });
+
   test("Invokes custom script and then Ruby", async () => {
     const workspacePath = fs.mkdtempSync(
       path.join(os.tmpdir(), "ruby-lsp-test-"),
@@ -24,6 +31,7 @@ suite("Custom", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const custom = new Custom(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -31,16 +39,9 @@ suite("Custom", () => {
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const custom = new Custom(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const commandStub = sinon
       .stub(custom, "customCommand")

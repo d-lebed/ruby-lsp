@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { exec, spawn as originalSpawn } from "child_process";
 import { createHash } from "crypto";
 import { promisify } from "util";
 
@@ -74,6 +74,8 @@ export interface PathConverterInterface {
 export const STATUS_EMITTER = new vscode.EventEmitter<
   WorkspaceInterface | undefined
 >();
+
+export const spawn = originalSpawn;
 
 export const asyncExec = promisify(exec);
 export const LSP_NAME = "Ruby LSP";

@@ -19,6 +19,13 @@ suite("Mise", () => {
     return;
   }
 
+  let spawnStub: sinon.SinonStub;
+  let stdinData: string[];
+
+  teardown(() => {
+    spawnStub?.restore();
+  });
+
   test("Finds Ruby only binary path is appended to PATH", async () => {
     // eslint-disable-next-line no-process-env
     const workspacePath = process.env.PWD!;
@@ -28,6 +35,7 @@ suite("Mise", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const mise = new Mise(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -35,16 +43,9 @@ suite("Mise", () => {
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const mise = new Mise(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const findStub = sinon
       .stub(mise, "findMiseUri")
@@ -91,6 +92,7 @@ suite("Mise", () => {
       index: 0,
     };
     const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    const mise = new Mise(workspaceFolder, outputChannel, async () => {});
 
     const envStub = {
       env: { ANY: "true" },
@@ -98,16 +100,9 @@ suite("Mise", () => {
       version: "3.0.0",
     };
 
-    const { spawnStub, stdinData } = createSpawnStub({
+    ({ spawnStub, stdinData } = createSpawnStub({
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
-    });
-
-    const mise = new Mise(
-      workspaceFolder,
-      outputChannel,
-      async () => {},
-      spawnStub,
-    );
+    }));
 
     const misePath = path.join(workspacePath, "mise");
     fs.writeFileSync(misePath, "fakeMiseBinary");
