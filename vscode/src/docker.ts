@@ -5,6 +5,26 @@ import * as vscode from "vscode";
 import { PathConverterInterface } from "./common";
 import { WorkspaceChannel } from "./workspaceChannel";
 
+export interface ComposeConfig {
+  services: Record<string, ComposeService>;
+  ["x-mutagen"]?: { sync: Record<string, MutagenShare> } | undefined;
+}
+
+interface ComposeService {
+  volumes: ComposeVolume[];
+}
+
+interface ComposeVolume {
+  type: string;
+  source: string;
+  target: string;
+}
+
+interface MutagenShare {
+  alpha: string;
+  beta: string;
+}
+
 interface MutagenMount {
   volume: string;
   source: string;
@@ -20,7 +40,7 @@ type MutagenMountMapping = Record<
 >;
 
 export function fetchPathMapping(
-  config: any,
+  config: ComposeConfig,
   service: string,
 ): Record<string, string> {
   const mutagenMounts = fetchMutagenMounts(config["x-mutagen"]?.sync || {});
@@ -84,14 +104,11 @@ export class ContainerPathConverter implements PathConverterInterface {
 }
 
 function fetchComposeBindings(
-  volumes: { type: string; source: string; target: string }[],
+  volumes: ComposeVolume[],
   mutagenMounts: MutagenMountMapping,
 ): Record<string, string> {
   return volumes.reduce(
-    (
-      acc: Record<string, string>,
-      volume: { type: string; source: string; target: string },
-    ) => {
+    (acc: Record<string, string>, volume: ComposeVolume) => {
       if (volume.type === "bind") {
         acc[volume.source] = volume.target;
       } else if (volume.type === "volume") {
@@ -123,12 +140,12 @@ function transformMutagenMount(alpha: string, beta: string): MutagenMount {
 }
 
 function fetchMutagenMounts(
-  sync: Record<string, { alpha: string; beta: string }> = {},
+  sync: Record<string, MutagenShare> = {},
 ): MutagenMountMapping {
   return Object.entries(sync).reduce(
     (
       acc: Record<string, { source: string; target: string }>,
-      [name, { alpha, beta }]: [string, { alpha: string; beta: string }],
+      [name, { alpha, beta }]: [string, MutagenShare],
     ) => {
       if (name === "defaults") return acc;
 

@@ -5,7 +5,11 @@ import path from "path";
 import * as vscode from "vscode";
 import { Executable } from "vscode-languageclient/node";
 
-import { ContainerPathConverter, fetchPathMapping } from "../docker";
+import {
+  ComposeConfig,
+  ContainerPathConverter,
+  fetchPathMapping,
+} from "../docker";
 
 import { VersionManager, ActivationResult } from "./versionManager";
 
@@ -15,7 +19,11 @@ import { VersionManager, ActivationResult } from "./versionManager";
 // Users are allowed to define a shell script that runs before calling ruby, giving them the chance to modify the PATH,
 // GEM_HOME and GEM_PATH as needed to find the correct Ruby runtime.
 export class Compose extends VersionManager {
+  protected composeConfig: ComposeConfig = { services: {} } as ComposeConfig;
+
   async activate(): Promise<ActivationResult> {
+    await this.ensureConfigured();
+
     const parsedResult = await this.runEnvActivationScript(
       `${this.composeRunCommand()} ${this.composeServiceName()} ruby`,
     );
@@ -55,11 +63,10 @@ export class Compose extends VersionManager {
   }
 
   async buildPathConverter(workspaceFolder: vscode.WorkspaceFolder) {
-    const configJson = await this.runScript(
-      `${this.composeCommand()} config --format=json`,
+    const pathMapping = fetchPathMapping(
+      this.composeConfig,
+      this.composeServiceName(),
     );
-    const config = JSON.parse(configJson.stdout);
-    const pathMapping = fetchPathMapping(config, this.composeServiceName());
 
     const stats = Object.entries(pathMapping).map(([local, remote]) => {
       const absolute = path.resolve(workspaceFolder.uri.fsPath, local);
@@ -116,5 +123,58 @@ export class Compose extends VersionManager {
       composeCustomCommand ||
       "docker --log-level=error compose --progress=quiet"
     );
+  }
+
+  protected async ensureConfigured() {
+    this.composeConfig = await this.getComposeConfig();
+    const services: vscode.QuickPickItem[] = [];
+
+    const config = vscode.workspace.getConfiguration("rubyLsp");
+    const currentService = config.get("rubyVersionManager.composeService") as
+      | string
+      | undefined;
+
+    if (currentService && this.composeConfig.services[currentService]) {
+      return;
+    }
+
+    for (const [name, _service] of Object.entries(
+      this.composeConfig.services,
+    )) {
+      services.push({ label: name });
+    }
+
+    const answer = await vscode.window.showQuickPick(services, {
+      title: "Select Docker Compose service where to run ruby-lsp",
+      ignoreFocusOut: true,
+    });
+
+    if (!answer) {
+      throw new Error("No compose service selected");
+    }
+
+    const managerConfig = config.inspect("rubyVersionManager");
+    const workspaceConfig = managerConfig?.workspaceValue || {};
+
+    await config.update("rubyVersionManager", {
+      ...workspaceConfig,
+      ...{ composeService: answer.label },
+    });
+  }
+
+  private async getComposeConfig(): Promise<ComposeConfig> {
+    try {
+      const { stdout, stderr: _stderr } = await this.runScript(
+        `${this.composeCommand()} config --format=json`,
+      );
+
+      const config = JSON.parse(stdout) as ComposeConfig;
+
+      return config;
+    } catch (error: any) {
+      throw new Error(
+        `Failed to read docker-compose configuration: ${error.message}`,
+      );
+    }
   }
 }

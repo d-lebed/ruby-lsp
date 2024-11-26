@@ -11,30 +11,43 @@ import { Compose } from "../../../ruby/compose";
 import * as common from "../../../common";
 import { ACTIVATION_SEPARATOR } from "../../../ruby/versionManager";
 import { createSpawnStub } from "../testHelpers";
+import { ComposeConfig } from "../../../docker";
 
 suite("Compose", () => {
   let spawnStub: sinon.SinonStub;
+  let execStub: sinon.SinonStub;
   let configStub: sinon.SinonStub;
   let stdinData: string[];
 
-  teardown(() => {
-    spawnStub?.restore();
-    configStub?.restore();
-  });
+  let workspacePath: string;
+  let workspaceFolder: vscode.WorkspaceFolder;
+  let outputChannel: WorkspaceChannel;
 
-  test("Activates Ruby environment using Docker Compose", async () => {
-    const workspacePath = fs.mkdtempSync(
-      path.join(os.tmpdir(), "ruby-lsp-test-"),
-    );
-    const uri = vscode.Uri.file(workspacePath);
-    const workspaceFolder = {
-      uri,
+  const composeService = "develop";
+  const composeConfig: ComposeConfig = {
+    services: { [composeService]: { volumes: [] } },
+  };
+
+  setup(() => {
+    workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), "ruby-lsp-test-"));
+    workspaceFolder = {
+      uri: vscode.Uri.file(workspacePath),
       name: path.basename(workspacePath),
       index: 0,
     };
-    const outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+    outputChannel = new WorkspaceChannel("fake", common.LOG_CHANNEL);
+  });
+
+  teardown(() => {
+    spawnStub?.restore();
+    execStub?.restore();
+    configStub?.restore();
+
+    fs.rmSync(workspacePath, { recursive: true, force: true });
+  });
+
+  test("Activates Ruby environment using Docker Compose", async () => {
     const compose = new Compose(workspaceFolder, outputChannel, async () => {});
-    const composeService = "develop";
 
     const envStub = {
       env: { ANY: "true" },
@@ -46,10 +59,19 @@ suite("Compose", () => {
       stderr: `${ACTIVATION_SEPARATOR}${JSON.stringify(envStub)}${ACTIVATION_SEPARATOR}`,
     }));
 
+    execStub = sinon
+      .stub(common, "asyncExec")
+      .resolves({ stdout: JSON.stringify(composeConfig), stderr: "" });
+
     configStub = sinon.stub(vscode.workspace, "getConfiguration").returns({
       get: (name: string) => {
-        if (name === "composeService") {
+        if (
+          name === "composeService" ||
+          name === "rubyVersionManager.composeService"
+        ) {
           return composeService;
+        } else if (name === "rubyVersionManager") {
+          return { composeService };
         }
         return undefined;
       },
@@ -76,7 +98,19 @@ suite("Compose", () => {
           "-rjson",
         ],
         {
-          cwd: uri.fsPath,
+          cwd: workspaceFolder.uri.fsPath,
+          shell,
+          // eslint-disable-next-line no-process-env
+          env: process.env,
+        },
+      ),
+    );
+
+    assert.ok(
+      execStub.calledOnceWithExactly(
+        "docker --log-level=error compose --progress=quiet config --format=json",
+        {
+          cwd: workspaceFolder.uri.fsPath,
           shell,
           // eslint-disable-next-line no-process-env
           env: process.env,
@@ -88,7 +122,5 @@ suite("Compose", () => {
 
     assert.strictEqual(version, "3.0.0");
     assert.strictEqual(yjit, true);
-
-    fs.rmSync(workspacePath, { recursive: true, force: true });
   });
 });
