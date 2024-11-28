@@ -71,6 +71,8 @@ module RubyLsp
         text_document_prepare_type_hierarchy(message)
       when "textDocument/rename"
         text_document_rename(message)
+      when "textDocument/prepareRename"
+        text_document_prepare_rename(message)
       when "textDocument/references"
         text_document_references(message)
       when "typeHierarchy/supertypes"
@@ -237,6 +239,7 @@ module RubyLsp
       completion_provider = Requests::Completion.provider if enabled_features["completion"]
       signature_help_provider = Requests::SignatureHelp.provider if enabled_features["signatureHelp"]
       type_hierarchy_provider = Requests::PrepareTypeHierarchy.provider if enabled_features["typeHierarchy"]
+      rename_provider = Requests::Rename.provider unless @global_state.has_type_checker
 
       response = {
         capabilities: Interface::ServerCapabilities.new(
@@ -263,7 +266,7 @@ module RubyLsp
           workspace_symbol_provider: enabled_features["workspaceSymbol"] && !@global_state.has_type_checker,
           signature_help_provider: signature_help_provider,
           type_hierarchy_provider: type_hierarchy_provider,
-          rename_provider: !@global_state.has_type_checker,
+          rename_provider: rename_provider,
           references_provider: !@global_state.has_type_checker,
           document_range_formatting_provider: true,
           experimental: {
@@ -728,6 +731,24 @@ module RubyLsp
     end
 
     sig { params(message: T::Hash[Symbol, T.untyped]).void }
+    def text_document_prepare_rename(message)
+      params = message[:params]
+      document = @store.get(params.dig(:textDocument, :uri))
+
+      unless document.is_a?(RubyDocument)
+        send_empty_response(message[:id])
+        return
+      end
+
+      send_message(
+        Result.new(
+          id: message[:id],
+          response: Requests::PrepareRename.new(document, params[:position]).perform,
+        ),
+      )
+    end
+
+    sig { params(message: T::Hash[Symbol, T.untyped]).void }
     def text_document_references(message)
       params = message[:params]
       document = @store.get(params.dig(:textDocument, :uri))
@@ -981,15 +1002,15 @@ module RubyLsp
         next unless file_path.end_with?(".rb")
 
         load_path_entry = $LOAD_PATH.find { |load_path| file_path.start_with?(load_path) }
-        indexable = RubyIndexer::IndexablePath.new(load_path_entry, file_path)
+        uri.add_require_path_from_load_entry(load_path_entry) if load_path_entry
 
         case change[:type]
         when Constant::FileChangeType::CREATED
-          index.index_single(indexable)
+          index.index_single(uri)
         when Constant::FileChangeType::CHANGED
-          index.handle_change(indexable)
+          index.handle_change(uri)
         when Constant::FileChangeType::DELETED
-          index.delete(indexable)
+          index.delete(uri)
         end
       end
 

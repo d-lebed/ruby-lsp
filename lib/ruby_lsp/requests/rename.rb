@@ -12,6 +12,15 @@ module RubyLsp
 
       class InvalidNameError < StandardError; end
 
+      class << self
+        extend T::Sig
+
+        sig { returns(Interface::RenameOptions) }
+        def provider
+          Interface::RenameOptions.new(prepare_provider: true)
+        end
+      end
+
       sig do
         params(
           global_state: GlobalState,
@@ -106,7 +115,9 @@ module RubyLsp
 
         T.must(@global_state.index[fully_qualified_name]).each do |entry|
           # Do not rename files that are not part of the workspace
-          next unless entry.file_path.start_with?(@global_state.workspace_path)
+          uri = entry.uri
+          file_path = T.must(uri.full_path)
+          next unless file_path.start_with?(@global_state.workspace_path)
 
           case entry
           when RubyIndexer::Entry::Class, RubyIndexer::Entry::Module, RubyIndexer::Entry::Constant,
@@ -117,13 +128,12 @@ module RubyLsp
             if "#{file_name}.rb" == entry.file_name
               new_file_name = file_from_constant_name(T.must(@new_name.split("::").last))
 
-              old_uri = URI::Generic.from_path(path: entry.file_path).to_s
               new_uri = URI::Generic.from_path(path: File.join(
-                File.dirname(entry.file_path),
+                File.dirname(file_path),
                 "#{new_file_name}.rb",
               )).to_s
 
-              document_changes << Interface::RenameFile.new(kind: "rename", old_uri: old_uri, new_uri: new_uri)
+              document_changes << Interface::RenameFile.new(kind: "rename", old_uri: uri.to_s, new_uri: new_uri)
             end
           end
         end
