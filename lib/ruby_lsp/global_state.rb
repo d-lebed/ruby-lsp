@@ -56,7 +56,7 @@ module RubyLsp
       )
       @client_capabilities = T.let(ClientCapabilities.new, ClientCapabilities)
       @enabled_feature_flags = T.let({}, T::Hash[Symbol, T::Boolean])
-      @local_fs_map = T.let({}, T::Hash[String, String])
+      @local_fs_map = T.let(build_local_fs_map_from_env, T::Hash[String, String])
     end
 
     sig { params(addon_name: String).returns(T.nilable(T::Hash[Symbol, T.untyped])) }
@@ -303,6 +303,17 @@ module RubyLsp
       Bundler.locked_gems&.specs&.map(&:name) || []
     rescue Bundler::GemfileNotFound
       []
+    end
+
+    sig { returns(T::Hash[String, String]) }
+    def build_local_fs_map_from_env
+      env = ENV["RUBY_LSP_LOCAL_FS_MAP"]
+      return {} unless env
+
+      env.split(",").each_with_object({}) do |pair, map|
+        local, remote = pair.split(":", 2)
+        map[local] = remote
+      end
     end
   end
 end
