@@ -42,6 +42,20 @@ export class Compose extends VersionManager {
     const parsedResult = this.parseWithErrorHandling(activationContent![1]);
     const pathMapping = await this.buildPathMapping();
 
+    if (parsedResult.gemPath) {
+      const convertedPaths = (parsedResult.gemPath as string[]).map((path) => {
+        for (const [local, remote] of Object.entries(pathMapping)) {
+          if (path.startsWith(remote)) {
+            return path.replace(remote, local);
+          }
+        }
+
+        return path;
+      });
+
+      parsedResult.gemPath = convertedPaths;
+    }
+
     const wrapCommand = (executable: Executable) => {
       const composeCommad = parseCommand(
         `${this.composeRunCommand()} ${this.composeServiceName()}`,

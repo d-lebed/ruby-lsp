@@ -87,7 +87,7 @@ module RubyLsp
       all_dependencies = gather_direct_and_indirect_dependencies
 
       options.dig(:initializationOptions, :localFsMap)&.each do |local, remote|
-        local_fs_map[local] = remote
+        local_fs_map[local.to_s] = remote
       end
 
       workspace_uri = options.dig(:workspaceFolders, 0, :uri)
