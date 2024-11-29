@@ -188,10 +188,10 @@ module RubyLsp
       return uri unless path
 
       local_fs_map.each do |external, internal|
-        if path.start_with?(external)
-          uri.path = path.sub(external, internal)
-          return uri
-        end
+        next unless path.start_with?(external)
+
+        uri.path = path.sub(external, internal)
+        return uri
       end
 
       uri
@@ -203,10 +203,10 @@ module RubyLsp
       return uri unless path
 
       local_fs_map.each do |external, internal|
-        if path.start_with?(internal)
-          uri.path = path.sub(internal, external)
-          return uri
-        end
+        next unless path.start_with?(internal)
+
+        uri.path = path.sub(internal, external)
+        return uri
       end
 
       uri
