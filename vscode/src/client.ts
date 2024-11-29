@@ -155,7 +155,7 @@ function collectClientOptions(
   const supportedSchemes = ["file", "git"];
 
   const fsPath = workspaceFolder.uri.fsPath.replace(/\/$/, "");
-  const pathConverter = ruby.pathConverter;
+  const pathMapping = ruby.pathMapping;
 
   // For each workspace, the language client is responsible for handling requests for:
   // 1. Files inside of the workspace itself
@@ -231,7 +231,7 @@ function collectClientOptions(
       indexing: configuration.get("indexing"),
       addonSettings: configuration.get("addonSettings"),
       enabledFeatureFlags: enabledFeatureFlags(),
-      localFsMap: pathConverter.pathMapping,
+      localFsMap: pathMapping,
     },
   };
 }
@@ -700,23 +700,9 @@ export default class Client extends LanguageClient implements ClientInterface {
           token?: vscode.CancellationToken,
         ) => Promise<T>,
       ) => {
-        // return this.benchmarkMiddleware(type, param, () =>
-        //   next(type, param, token),
-        // );
-
-        this.workspaceOutputChannel.trace(
-          `Sending request: ${JSON.stringify(type)} with params: ${JSON.stringify(param)}`,
-        );
-
-        const result = (await this.benchmarkMiddleware(type, param, () =>
+        return this.benchmarkMiddleware(type, param, () =>
           next(type, param, token),
-        )) as any;
-
-        this.workspaceOutputChannel.trace(
-          `Received response for ${JSON.stringify(type)}: ${JSON.stringify(result)}`,
         );
-
-        return result;
       },
       sendNotification: async <TR>(
         type: string | MessageSignature,

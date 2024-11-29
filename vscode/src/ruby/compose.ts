@@ -7,11 +7,7 @@ import { ExecOptions } from "child_process";
 import * as vscode from "vscode";
 import { Executable } from "vscode-languageclient/node";
 
-import {
-  ComposeConfig,
-  ContainerPathConverter,
-  fetchPathMapping,
-} from "../docker";
+import { ComposeConfig, fetchPathMapping } from "../docker";
 import { parseCommand, spawn } from "../common";
 
 import {
@@ -44,7 +40,7 @@ export class Compose extends VersionManager {
     ).exec(output);
 
     const parsedResult = this.parseWithErrorHandling(activationContent![1]);
-    const pathConverter = await this.buildPathConverter();
+    const pathMapping = await this.buildPathMapping();
 
     const wrapCommand = (executable: Executable) => {
       const composeCommad = parseCommand(
@@ -75,12 +71,12 @@ export class Compose extends VersionManager {
       yjit: parsedResult.yjit,
       version: parsedResult.version,
       gemPath: parsedResult.gemPath,
-      pathConverter,
+      pathMapping,
       wrapCommand,
     };
   }
 
-  protected async buildPathConverter() {
+  protected async buildPathMapping() {
     const pathMapping = fetchPathMapping(
       this.composeConfig,
       this.composeServiceName(),
@@ -110,7 +106,7 @@ export class Compose extends VersionManager {
       {} as Record<string, string>,
     );
 
-    return new ContainerPathConverter(filteredMapping, this.outputChannel);
+    return filteredMapping;
   }
 
   protected composeRunCommand(): string {
